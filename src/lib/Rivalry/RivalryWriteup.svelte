@@ -44,6 +44,64 @@
 
     /*
         ==================================================
+        LEAGUE CONTEXT FOR AI
+        ==================================================
+
+        IMPORTANT:
+
+        Groq gets qualitative classifications ONLY.
+
+        It does NOT receive:
+          - shared season count
+          - completed season count
+          - meetings-per-season arithmetic
+          - league rank number
+          - opponent rank number
+
+        Therefore it cannot write garbage like:
+
+        "9 meetings in 8 seasons means..."
+
+        The application already decided whether this
+        pairing is frequent.
+    */
+
+    const compactLeagueContext =
+        context => {
+
+        if (!context) {
+            return null;
+        }
+
+
+        return {
+            size:
+                context.sizeTier,
+
+            frequency:
+                context.frequencyClass,
+
+            sizeDescription:
+                context
+                    .sizeDescription,
+
+            frequencyDescription:
+                context
+                    .frequencyDescription,
+
+            managerOneRelationship:
+                context
+                    .managerOneRelationship,
+
+            managerTwoRelationship:
+                context
+                    .managerTwoRelationship
+        };
+    };
+
+
+    /*
+        ==================================================
         COMPACT LEDGER
         ==================================================
     */
@@ -431,7 +489,7 @@
 
     /*
         ==================================================
-        COMPACT CAREER CONTEXT
+        COMPACT CAREER
         ==================================================
     */
 
@@ -470,12 +528,6 @@
         ==================================================
         BUILD LEAN WRITER DOSSIER
         ==================================================
-
-        The local fact engine can remain huge.
-
-        This is intentionally SMALL enough to stay well
-        below Groq's 8K-token-per-minute free-tier ceiling.
-        ==================================================
     */
 
     const buildWriterDossier = (
@@ -496,24 +548,29 @@
 
         return {
             /*
-                The new league-wide identity layer.
+                Qualitative league significance only.
             */
 
-            leagueContext:
-                leagueContext ||
-                null,
+            rivalryIdentity:
+                compactLeagueContext(
+                    leagueContext
+                ),
 
 
             /*
-                Current facts.
+                Actual history may still use real counts.
+
+                The prohibition is specifically against
+                turning counts/seasons into frequency math.
             */
 
             meetings:
                 factSheet
                     ?.meetingCounts,
 
+
             records: {
-                regularSeason:
+                regular:
                     factSheet
                         ?.currentRecords
                         ?.regularSeason
@@ -538,12 +595,8 @@
                     ?.firstAndMostRecent,
 
 
-            /*
-                Streaks.
-            */
-
             streaks: {
-                regularCurrent:
+                current:
                     compactCurrentStreak(
                         factSheet
                             ?.streaks
@@ -551,7 +604,7 @@
                             ?.current
                     ),
 
-                regularLongest: {
+                longest: {
                     [managerOne]:
                         compactLongest(
                             factSheet
@@ -580,13 +633,6 @@
                     )
             },
 
-
-            /*
-                Recent record only.
-
-                The exact games already exist in chronology,
-                so no duplicate game arrays here.
-            */
 
             recent: {
                 last3:
@@ -638,13 +684,6 @@
                     ?.seriesLeadHistory
                     ?.maximumRegularSeasonLead,
 
-
-            /*
-                ONE authoritative chronology.
-
-                This is the critical safety net for any
-                historical prose.
-            */
 
             chronology: {
                 regular:
@@ -722,14 +761,6 @@
             });
 
 
-        const writerDossier =
-            buildWriterDossier(
-                fullFactSheet,
-                rivalry
-                    ?.leagueContext
-            );
-
-
         return {
             managerOne:
                 managerOneName,
@@ -738,7 +769,11 @@
                 managerTwoName,
 
             factSheet:
-                writerDossier
+                buildWriterDossier(
+                    fullFactSheet,
+                    rivalry
+                        ?.leagueContext
+                )
         };
     };
 
@@ -921,7 +956,7 @@
 
     /*
         ==================================================
-        AUTO GENERATION KEY
+        AUTO GENERATION
         ==================================================
     */
 
