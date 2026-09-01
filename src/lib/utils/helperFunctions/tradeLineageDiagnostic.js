@@ -5,21 +5,33 @@ import { getLeagueTeamManagers } from './leagueTeamManagers';
 
 /*
     =====================================================
-    HISTORICAL TRADE ANALYZER - PHASE 3
+    HISTORICAL TRADE ANALYZER - PHASE 4
     =====================================================
 
-    Phase 3 keeps the recursive ASSET LINEAGE and adds
-    realized fantasy production.
+    Phase 4 keeps the recursive ASSET LINEAGE and realized
+    roster points from Phase 3, then normalizes each player
+    stint against active-rostered players at the SAME
+    POSITION over the SAME WEEKS.
 
-    The production primitive is intentionally simple:
+    The two player-level outputs are:
 
-        ALL fantasy points scored while the player was
-        on that franchise's roster.
+    POSITION SCORE (0-100)
+    - Percentile rank of that player's total points against
+      all same-position players who appeared on an active
+      matchup roster during the exact ownership window.
 
-    Starter versus bench does not matter here. Positional
-    weighting and ranking normalization come later.
+    POSITIONAL VALUE UNITS
+    - positionScore / 100 * rosteredWeeks
+    - This is intentionally additive across lineage nodes.
+    - It rewards both quality and useful duration without
+      letting QB raw scoring automatically dominate TE/RB/WR.
 
-    It still does NOT assign trade grades.
+    Sleeper matchup `players` is treated as the active roster
+    pool for each week. Historical reserve/IR membership is
+    not independently reconstructed by the matchup endpoint,
+    so the source validation remains visible.
+
+    It still does NOT assign final trade grades.
 
     PLAYER RULES
     - A player received in a trade is followed forward
@@ -90,6 +102,7 @@ let pendingDiagnostics =
 
 export const getTradeLineageDiagnostics =
     async (
+        playerCatalog = {},
         refresh = false
     ) => {
 
@@ -110,7 +123,9 @@ export const getTradeLineageDiagnostics =
 
 
         pendingDiagnostics =
-            buildDiagnostics();
+            buildDiagnostics(
+                playerCatalog
+            );
 
 
         try {
@@ -134,7 +149,9 @@ export const getTradeLineageDiagnostics =
 */
 
 const buildDiagnostics =
-    async () => {
+    async (
+        playerCatalog = {}
+    ) => {
 
         const teamManagers =
             await getLeagueTeamManagers();
@@ -224,7 +241,9 @@ const buildDiagnostics =
 
             currentRosterPlayers,
 
-            productionLookup
+            productionLookup,
+
+            playerCatalog
         };
 
 
@@ -258,7 +277,7 @@ const buildDiagnostics =
 
         return {
             phase:
-                3,
+                4,
 
             generatedAt:
                 new Date()
@@ -310,7 +329,16 @@ const buildDiagnostics =
                     lineageStats.rosteredWeeks,
 
                 missingPointWeeks:
-                    lineageStats.missingPointWeeks
+                    lineageStats.missingPointWeeks,
+
+                normalizedPlayerStints:
+                    lineageStats.normalizedPlayerStints,
+
+                missingPositionStints:
+                    lineageStats.missingPositionStints,
+
+                positionalValueUnits:
+                    lineageStats.positionalValueUnits
             },
 
             validations:
@@ -384,6 +412,36 @@ const getHistoricalLeagueChain =
             }
 
 
+            const playoffStart =
+                Number(
+                    leagueData
+                        ?.settings
+                        ?.playoff_week_start
+                ) ||
+                null;
+
+
+            const playoffRounds =
+                await getPlayoffRoundCount(
+                    String(
+                        currentLeagueID
+                    )
+                );
+
+
+            const finalLeagueWeek =
+                (
+                    playoffStart &&
+                    playoffRounds
+                )
+                    ? (
+                        playoffStart +
+                        playoffRounds -
+                        1
+                    )
+                    : null;
+
+
             seasons.push({
                 leagueID:
                     String(
@@ -395,13 +453,11 @@ const getHistoricalLeagueChain =
                         leagueData.season
                     ),
 
-                playoffStart:
-                    Number(
-                        leagueData
-                            ?.settings
-                            ?.playoff_week_start
-                    ) ||
-                    null
+                playoffStart,
+
+                playoffRounds,
+
+                finalLeagueWeek
             });
 
 
@@ -419,6 +475,68 @@ const getHistoricalLeagueChain =
                 a.year -
                 b.year
         );
+    };
+
+
+
+const getPlayoffRoundCount =
+    async leagueID => {
+
+        try {
+            const response =
+                await fetch(
+                    (
+                        `https://api.sleeper.app/v1/league/` +
+                        `${leagueID}/winners_bracket`
+                    ),
+                    {
+                        compress:
+                            true
+                    }
+                );
+
+
+            if (!response.ok) {
+                return null;
+            }
+
+
+            const bracket =
+                await response.json();
+
+
+            if (
+                !Array.isArray(
+                    bracket
+                ) ||
+                !bracket.length
+            ) {
+                return null;
+            }
+
+
+            const rounds =
+                bracket
+                    .map(
+                        matchup =>
+                            Number(
+                                matchup?.r
+                            )
+                    )
+                    .filter(
+                        Number.isFinite
+                    );
+
+
+            return rounds.length
+                ? Math.max(
+                    ...rounds
+                )
+                : null;
+        }
+        catch {
+            return null;
+        }
     };
 
 
@@ -532,6 +650,15 @@ const loadSeasonPackage =
 
                 completedDrafts:
                     drafts.length,
+
+                playoffStart:
+                    season.playoffStart,
+
+                playoffRounds:
+                    season.playoffRounds,
+
+                finalLeagueWeek:
+                    season.finalLeagueWeek,
 
                 matchup:
                     matchupPackage.validation
@@ -1108,11 +1235,29 @@ const loadCurrentRosterPlayers =
 const loadSeasonMatchups =
     async season => {
 
+        const lastWeek =
+            (
+                Number.isFinite(
+                    Number(
+                        season.finalLeagueWeek
+                    )
+                ) &&
+                Number(
+                    season.finalLeagueWeek
+                ) >
+                    0
+            )
+                ? Number(
+                    season.finalLeagueWeek
+                )
+                : 18;
+
+
         const weeks =
             Array.from(
                 {
                     length:
-                        18
+                        lastWeek
                 },
                 (
                     _,
@@ -1549,7 +1694,8 @@ const getPlayerProduction =
         startRound,
         endSeason = null,
         endRound = null,
-        productionLookup
+        productionLookup,
+        playerCatalog = {}
     }) => {
 
         let points =
@@ -1795,7 +1941,7 @@ const getPlayerProduction =
         }
 
 
-        return {
+        const rawProduction = {
             points:
                 roundPoints(
                     points
@@ -1822,6 +1968,610 @@ const getPlayerProduction =
 
             weekly
         };
+
+
+        const position =
+            normalizePosition(
+                playerCatalog
+                    ?.[String(
+                        playerID
+                    )]
+                    ?.pos
+            );
+
+
+        const positional =
+            getPositionalComparison({
+                playerID:
+                    String(
+                        playerID
+                    ),
+
+                position,
+
+                production:
+                    rawProduction,
+
+                productionLookup,
+
+                playerCatalog
+            });
+
+
+        return {
+            ...rawProduction,
+
+            position,
+
+            ...positional
+        };
+    };
+
+
+
+const getPositionalComparison =
+    ({
+        playerID,
+        position,
+        production,
+        productionLookup,
+        playerCatalog
+    }) => {
+
+        if (
+            !position ||
+            !production
+                ?.weekly
+                ?.length
+        ) {
+            return {
+                positionScore:
+                    null,
+
+                positionRank:
+                    null,
+
+                positionRankEnd:
+                    null,
+
+                positionPool:
+                    0,
+
+                positionMedianPoints:
+                    null,
+
+                positionAveragePoints:
+                    null,
+
+                pointsAboveMedian:
+                    null,
+
+                positionalValue:
+                    0,
+
+                comparisonWeeks:
+                    production
+                        ?.weekly
+                        ?.length ||
+                    0
+            };
+        }
+
+
+        /*
+            Aggregate every same-position player over the
+            focal player's exact rostered weeks.
+
+            One player can move between rosters during a
+            week, so year|week|player is de-duplicated.
+        */
+
+        const totals =
+            new Map();
+
+
+        const seenPlayerWeeks =
+            new Set();
+
+
+        for (
+            const focalWeek
+            of production.weekly
+        ) {
+            const year =
+                Number(
+                    focalWeek.season
+                );
+
+
+            const week =
+                Number(
+                    focalWeek.week
+                );
+
+
+            const rosterMaps =
+                productionLookup
+                    ?.[year]
+                    ?.[week] ||
+                {};
+
+
+            for (
+                const rosterPlayers
+                of Object.values(
+                    rosterMaps
+                )
+            ) {
+                for (
+                    const [
+                        comparisonPlayerID,
+                        playerWeek
+                    ]
+                    of Object.entries(
+                        rosterPlayers ||
+                        {}
+                    )
+                ) {
+                    if (
+                        !playerWeek
+                            ?.rostered
+                    ) {
+                        continue;
+                    }
+
+
+                    const comparisonPosition =
+                        normalizePosition(
+                            playerCatalog
+                                ?.[String(
+                                    comparisonPlayerID
+                                )]
+                                ?.pos
+                        );
+
+
+                    if (
+                        comparisonPosition !==
+                        position
+                    ) {
+                        continue;
+                    }
+
+
+                    const playerWeekKey =
+                        (
+                            `${year}|${week}|` +
+                            `${comparisonPlayerID}`
+                        );
+
+
+                    if (
+                        seenPlayerWeeks.has(
+                            playerWeekKey
+                        )
+                    ) {
+                        continue;
+                    }
+
+
+                    seenPlayerWeeks.add(
+                        playerWeekKey
+                    );
+
+
+                    const existing =
+                        totals.get(
+                            String(
+                                comparisonPlayerID
+                            )
+                        ) ||
+                        {
+                            playerID:
+                                String(
+                                    comparisonPlayerID
+                                ),
+
+                            points:
+                                0,
+
+                            rosteredWeeks:
+                                0,
+
+                            scoredWeeks:
+                                0
+                        };
+
+
+                    existing.rosteredWeeks++;
+
+
+                    if (
+                        playerWeek.points !==
+                        null
+                    ) {
+                        existing.points +=
+                            Number(
+                                playerWeek.points
+                            ) ||
+                            0;
+
+
+                        existing.scoredWeeks++;
+                    }
+
+
+                    totals.set(
+                        String(
+                            comparisonPlayerID
+                        ),
+                        existing
+                    );
+                }
+            }
+        }
+
+
+        /*
+            The focal player should normally already exist
+            in the pool. Keep a deterministic fallback so a
+            partial historical payload cannot silently make
+            the player's own comparison disappear.
+        */
+
+        if (
+            !totals.has(
+                String(
+                    playerID
+                )
+            )
+        ) {
+            totals.set(
+                String(
+                    playerID
+                ),
+                {
+                    playerID:
+                        String(
+                            playerID
+                        ),
+
+                    points:
+                        Number(
+                            production.points
+                        ) ||
+                        0,
+
+                    rosteredWeeks:
+                        Number(
+                            production.rosteredWeeks
+                        ) ||
+                        0,
+
+                    scoredWeeks:
+                        Number(
+                            production.scoredWeeks
+                        ) ||
+                        0
+                }
+            );
+        }
+
+
+        const comparisonTotals =
+            [
+                ...totals.values()
+            ]
+                .map(
+                    item => ({
+                        ...item,
+
+                        points:
+                            roundPoints(
+                                item.points
+                            )
+                    })
+                );
+
+
+        const pointValues =
+            comparisonTotals
+                .map(
+                    item =>
+                        Number(
+                            item.points
+                        ) ||
+                        0
+                )
+                .sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        a -
+                        b
+                );
+
+
+        const focalPoints =
+            Number(
+                production.points
+            ) ||
+            0;
+
+
+        const pool =
+            pointValues.length;
+
+
+        const less =
+            pointValues.filter(
+                value =>
+                    value <
+                    focalPoints
+            ).length;
+
+
+        const equal =
+            pointValues.filter(
+                value =>
+                    Math.abs(
+                        value -
+                        focalPoints
+                    ) <
+                    0.000001
+            ).length;
+
+
+        const greater =
+            pointValues.filter(
+                value =>
+                    value >
+                    focalPoints
+            ).length;
+
+
+        let positionScore =
+            null;
+
+
+        if (
+            pool ===
+            1
+        ) {
+            positionScore =
+                100;
+        }
+        else if (
+            pool >
+            1
+        ) {
+            const averageAscendingIndex =
+                less +
+                (
+                    Math.max(
+                        1,
+                        equal
+                    ) -
+                    1
+                ) /
+                2;
+
+
+            positionScore =
+                roundScore(
+                    100 *
+                    averageAscendingIndex /
+                    (
+                        pool -
+                        1
+                    )
+                );
+        }
+
+
+        const median =
+            medianValue(
+                pointValues
+            );
+
+
+        const average =
+            pool
+                ? pointValues.reduce(
+                    (
+                        sum,
+                        value
+                    ) =>
+                        sum +
+                        value,
+                    0
+                ) /
+                pool
+                : null;
+
+
+        const positionalValue =
+            positionScore ===
+                null
+                ? 0
+                : (
+                    (
+                        Number(
+                            production
+                                .rosteredWeeks
+                        ) ||
+                        0
+                    ) *
+                    (
+                        positionScore /
+                        100
+                    )
+                );
+
+
+        return {
+            positionScore,
+
+            positionRank:
+                pool
+                    ? greater +
+                        1
+                    : null,
+
+            positionRankEnd:
+                pool
+                    ? greater +
+                        Math.max(
+                            1,
+                            equal
+                        )
+                    : null,
+
+            positionPool:
+                pool,
+
+            positionMedianPoints:
+                median ===
+                    null
+                    ? null
+                    : roundPoints(
+                        median
+                    ),
+
+            positionAveragePoints:
+                average ===
+                    null
+                    ? null
+                    : roundPoints(
+                        average
+                    ),
+
+            pointsAboveMedian:
+                median ===
+                    null
+                    ? null
+                    : roundPoints(
+                        focalPoints -
+                        median
+                    ),
+
+            positionalValue:
+                roundValue(
+                    positionalValue
+                ),
+
+            comparisonWeeks:
+                production
+                    .weekly
+                    .length
+        };
+    };
+
+
+const normalizePosition =
+    value => {
+
+        const position =
+            String(
+                value ||
+                ''
+            )
+                .trim()
+                .toUpperCase();
+
+
+        if (!position) {
+            return null;
+        }
+
+
+        if (
+            position ===
+                'D/ST' ||
+            position ===
+                'DST'
+        ) {
+            return 'DEF';
+        }
+
+
+        return position;
+    };
+
+
+const medianValue =
+    values => {
+
+        if (
+            !Array.isArray(
+                values
+            ) ||
+            !values.length
+        ) {
+            return null;
+        }
+
+
+        const middle =
+            Math.floor(
+                values.length /
+                2
+            );
+
+
+        if (
+            values.length %
+            2
+        ) {
+            return values[
+                middle
+            ];
+        }
+
+
+        return (
+            values[
+                middle -
+                1
+            ] +
+            values[
+                middle
+            ]
+        ) /
+        2;
+    };
+
+
+const roundScore =
+    value => {
+
+        return Math.round(
+            (
+                Number(
+                    value
+                ) ||
+                0
+            ) *
+            10
+        ) /
+        10;
+    };
+
+
+const roundValue =
+    value => {
+
+        return Math.round(
+            (
+                Number(
+                    value
+                ) ||
+                0
+            ) *
+            1000
+        ) /
+        1000;
     };
 
 
@@ -2588,7 +3338,11 @@ const followPlayer = ({
 
             productionLookup:
                 lineageContext
-                    .productionLookup
+                    .productionLookup,
+
+            playerCatalog:
+                lineageContext
+                    .playerCatalog
         });
 
 
@@ -3456,6 +4210,83 @@ const summarizeParticipantProduction =
         }
 
 
+        let positionalValue =
+            0;
+
+
+        let normalizedPlayerStints =
+            0;
+
+
+        const collectNormalized =
+            node => {
+
+                if (!node) {
+                    return;
+                }
+
+
+                if (
+                    node.assetType ===
+                        'player' &&
+                    node.production
+                ) {
+                    const value =
+                        Number(
+                            node
+                                .production
+                                .positionalValue
+                        );
+
+
+                    if (
+                        Number.isFinite(
+                            value
+                        )
+                    ) {
+                        positionalValue +=
+                            value;
+                    }
+
+
+                    if (
+                        node
+                            .production
+                            .positionScore !==
+                        null &&
+                        node
+                            .production
+                            .positionScore !==
+                        undefined
+                    ) {
+                        normalizedPlayerStints++;
+                    }
+                }
+
+
+                for (
+                    const child
+                    of node.children ||
+                    []
+                ) {
+                    collectNormalized(
+                        child
+                    );
+                }
+            };
+
+
+        for (
+            const root
+            of roots ||
+            []
+        ) {
+            collectNormalized(
+                root
+            );
+        }
+
+
         return {
             points:
                 roundPoints(
@@ -3469,7 +4300,14 @@ const summarizeParticipantProduction =
             missingPointWeeks,
 
             uniquePlayers:
-                players.size
+                players.size,
+
+            positionalValue:
+                roundValue(
+                    positionalValue
+                ),
+
+            normalizedPlayerStints
         };
     };
 
@@ -3506,6 +4344,15 @@ const summarizeLineages =
                 0,
 
             missingPointWeeks:
+                0,
+
+            normalizedPlayerStints:
+                0,
+
+            missingPositionStints:
+                0,
+
+            positionalValueUnits:
                 0
         };
 
@@ -3551,6 +4398,32 @@ const summarizeLineages =
                                 .missingPointWeeks
                         ) ||
                         0;
+
+
+                    if (
+                        node
+                            .production
+                            .positionScore !==
+                            null &&
+                        node
+                            .production
+                            .positionScore !==
+                            undefined
+                    ) {
+                        summary.normalizedPlayerStints++;
+
+
+                        summary.positionalValueUnits +=
+                            Number(
+                                node
+                                    .production
+                                    .positionalValue
+                            ) ||
+                            0;
+                    }
+                    else {
+                        summary.missingPositionStints++;
+                    }
                 }
 
 
@@ -3630,6 +4503,12 @@ const summarizeLineages =
         summary.realizedPoints =
             roundPoints(
                 summary.realizedPoints
+            );
+
+
+        summary.positionalValueUnits =
+            roundValue(
+                summary.positionalValueUnits
             );
 
 
