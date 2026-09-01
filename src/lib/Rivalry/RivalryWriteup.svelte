@@ -21,12 +21,6 @@
     let lastAutoKey = '';
 
 
-    /*
-        ==================================================
-        MANAGER NAME
-        ==================================================
-    */
-
     const getManagerName = id => {
         const user =
             leagueTeamManagers
@@ -44,26 +38,15 @@
 
     /*
         ==================================================
-        LEAGUE CONTEXT FOR AI
+        AI RIVALRY IDENTITY
         ==================================================
 
-        IMPORTANT:
+        ONLY WORDS / CLASSIFICATIONS.
 
-        Groq gets qualitative classifications ONLY.
-
-        It does NOT receive:
-          - shared season count
-          - completed season count
-          - meetings-per-season arithmetic
-          - league rank number
-          - opponent rank number
-
-        Therefore it cannot write garbage like:
-
-        "9 meetings in 8 seasons means..."
-
-        The application already decided whether this
-        pairing is frequent.
+        No ranks.
+        No season counts.
+        No meeting-rate arithmetic.
+        No missed-season counts.
     */
 
     const compactLeagueContext =
@@ -81,13 +64,20 @@
             frequency:
                 context.frequencyClass,
 
+            cadence:
+                context.cadenceClass,
+
+            newRivalry:
+                context.isNew,
+
             sizeDescription:
-                context
-                    .sizeDescription,
+                context.sizeDescription,
 
             frequencyDescription:
-                context
-                    .frequencyDescription,
+                context.frequencyDescription,
+
+            cadenceDescription:
+                context.cadenceDescription,
 
             managerOneRelationship:
                 context
@@ -99,12 +89,6 @@
         };
     };
 
-
-    /*
-        ==================================================
-        COMPACT LEDGER
-        ==================================================
-    */
 
     const compactLedger =
         ledger => {
@@ -148,12 +132,6 @@
     };
 
 
-    /*
-        ==================================================
-        COMPACT CURRENT STREAK
-        ==================================================
-    */
-
     const compactCurrentStreak =
         streak => {
 
@@ -164,7 +142,7 @@
 
         if (
             streak.type ===
-                'tie'
+            'tie'
         ) {
             return {
                 type:
@@ -205,12 +183,6 @@
     };
 
 
-    /*
-        ==================================================
-        COMPACT LONGEST STREAK
-        ==================================================
-    */
-
     const compactLongest =
         streak => {
 
@@ -234,12 +206,6 @@
         };
     };
 
-
-    /*
-        ==================================================
-        COMPACT EXTREME GAME
-        ==================================================
-    */
 
     const compactExtreme =
         game => {
@@ -267,12 +233,6 @@
         };
     };
 
-
-    /*
-        ==================================================
-        COMPACT INDIVIDUAL SCORING
-        ==================================================
-    */
 
     const compactIndividual =
         stats => {
@@ -306,12 +266,6 @@
         };
     };
 
-
-    /*
-        ==================================================
-        COMPACT SCORING
-        ==================================================
-    */
 
     const compactScoring = (
         factSheet,
@@ -381,7 +335,6 @@
                     )
             },
 
-
             playoffs:
                 factSheet
                     ?.meetingCounts
@@ -418,12 +371,6 @@
     };
 
 
-    /*
-        ==================================================
-        COMPACT SEASONS
-        ==================================================
-    */
-
     const compactSeasons =
         seasons => {
 
@@ -454,12 +401,6 @@
     };
 
 
-    /*
-        ==================================================
-        COMPACT LEAD CHANGES
-        ==================================================
-    */
-
     const compactLeadChanges =
         changes => {
 
@@ -486,12 +427,6 @@
         );
     };
 
-
-    /*
-        ==================================================
-        COMPACT CAREER
-        ==================================================
-    */
 
     const compactCareer =
         career => {
@@ -524,12 +459,6 @@
     };
 
 
-    /*
-        ==================================================
-        BUILD LEAN WRITER DOSSIER
-        ==================================================
-    */
-
     const buildWriterDossier = (
         factSheet,
         leagueContext
@@ -547,27 +476,14 @@
 
 
         return {
-            /*
-                Qualitative league significance only.
-            */
-
             rivalryIdentity:
                 compactLeagueContext(
                     leagueContext
                 ),
 
-
-            /*
-                Actual history may still use real counts.
-
-                The prohibition is specifically against
-                turning counts/seasons into frequency math.
-            */
-
             meetings:
                 factSheet
                     ?.meetingCounts,
-
 
             records: {
                 regular:
@@ -589,11 +505,9 @@
                         ?.statement
             },
 
-
             firstAndLatest:
                 factSheet
                     ?.firstAndMostRecent,
-
 
             streaks: {
                 current:
@@ -633,7 +547,6 @@
                     )
             },
 
-
             recent: {
                 last3:
                     factSheet
@@ -654,14 +567,12 @@
                         ?.recordText
             },
 
-
             scoring:
                 compactScoring(
                     factSheet,
                     managerOne,
                     managerTwo
                 ),
-
 
             seasons:
                 compactSeasons(
@@ -670,7 +581,6 @@
                         ?.regularSeason
                 ),
 
-
             leadChanges:
                 compactLeadChanges(
                     factSheet
@@ -678,12 +588,10 @@
                         ?.regularSeason
                 ),
 
-
             maximumSeriesLead:
                 factSheet
                     ?.seriesLeadHistory
                     ?.maximumRegularSeasonLead,
-
 
             chronology: {
                 regular:
@@ -701,11 +609,9 @@
                     )
             },
 
-
             trades:
                 factSheet
                     ?.trades,
-
 
             career: {
                 [managerOne]:
@@ -725,12 +631,6 @@
         };
     };
 
-
-    /*
-        ==================================================
-        PAYLOAD
-        ==================================================
-    */
 
     const buildPayload = () => {
         const managerOneName =
@@ -777,12 +677,6 @@
         };
     };
 
-
-    /*
-        ==================================================
-        READ RESPONSE
-        ==================================================
-    */
 
     const readResponse =
         async response => {
@@ -839,12 +733,6 @@
         return result;
     };
 
-
-    /*
-        ==================================================
-        GENERATE
-        ==================================================
-    */
 
     async function generateWriteup(
         automatic = false
@@ -954,12 +842,6 @@
     }
 
 
-    /*
-        ==================================================
-        AUTO GENERATION
-        ==================================================
-    */
-
     $: regularPointsOne =
         rivalry
             ?.regularSeason
@@ -1051,9 +933,6 @@
 
     .intro {
         max-width: 650px;
-        height: auto;
-        max-height: none;
-        overflow: visible;
         margin: 0 auto 1.5em;
         text-align: center;
         color: #888;
@@ -1063,7 +942,6 @@
     .writing {
         width: 85%;
         max-width: 550px;
-        height: auto;
         margin: 2em auto;
         text-align: center;
         color: #888;
@@ -1071,46 +949,23 @@
     }
 
     .article {
-        display: block;
         width: 100%;
         max-width: 800px;
-        min-height: 0;
-        height: auto;
-        max-height: none;
-        overflow: visible;
-        box-sizing: border-box;
         margin: 2em auto 0;
-        padding: 0 0.25em;
         line-height: 1.7;
-        white-space: normal;
     }
 
     .headline {
-        display: block;
-        width: 100%;
-        height: auto;
-        max-height: none;
-        overflow: visible;
-        box-sizing: border-box;
         font-size: 1.5em;
         font-weight: 650;
         line-height: 1.3;
         margin: 0 0 1.3em;
         text-align: center;
-        white-space: normal;
         overflow-wrap: anywhere;
     }
 
     .paragraph {
-        display: block;
-        width: 100%;
-        min-height: 0;
-        height: auto;
-        max-height: none;
-        overflow: visible;
-        box-sizing: border-box;
         margin: 0 0 1.25em;
-        white-space: normal;
         overflow-wrap: break-word;
     }
 
@@ -1119,7 +974,6 @@
     }
 
     .byline {
-        display: block;
         margin-top: 1.75em;
         text-align: center;
         font-size: 0.75em;
@@ -1127,7 +981,6 @@
     }
 
     .buttonHolder {
-        display: block;
         margin-top: 1.75em;
         text-align: center;
     }
@@ -1173,11 +1026,6 @@
 
         h3 {
             font-size: 1.6em;
-        }
-
-        .article {
-            width: 100%;
-            padding: 0;
         }
 
         .headline {
