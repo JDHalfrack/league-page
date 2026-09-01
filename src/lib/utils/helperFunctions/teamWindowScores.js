@@ -1,37 +1,5 @@
 import { predictScores } from './predictOptimalScore';
 
-/*
-    Calculates three 0-100 scores for every roster:
-
-    WN  = Win Now
-    DYN = Dynasty
-    REB = Rebuild
-
-    Expected input:
-    {
-        rostersData,
-        players,
-        leagueData,
-        currentWeek
-    }
-
-    Returns:
-    {
-        [rosterID]: {
-            winNow: 0-100,
-            dynasty: 0-100,
-            rebuild: 0-100,
-
-            // useful for debugging later
-            components: {
-                strength: 0-100,
-                youth: 0-100,
-                depth: 0-100
-            }
-        }
-    }
-*/
-
 export const calculateTeamWindowScores = ({
     rostersData,
     players,
@@ -48,8 +16,6 @@ export const calculateTeamWindowScores = ({
         return {};
     }
 
-    // Sleeper projections in this project currently cover the NFL regular season.
-    // Keep this consistent with the existing Power Rankings logic.
     const firstWeek = Math.max(1, Math.min(parseInt(currentWeek) || 1, 18));
     const finalWeek = 18;
 
@@ -61,10 +27,7 @@ export const calculateTeamWindowScores = ({
         const rosterPlayers = (roster.players || [])
             .map(playerID => {
                 const player = players[playerID];
-
-                if (!player) {
-                    return null;
-                }
+                if (!player) return null;
 
                 return {
                     ...player,
@@ -73,15 +36,7 @@ export const calculateTeamWindowScores = ({
             })
             .filter(Boolean);
 
-        /*
-            ------------------------------------------------
-            1. CURRENT / REST-OF-SEASON STRENGTH
-            ------------------------------------------------
-
-            Reuse the same optimal-lineup projection system that
-            powers the existing Power Rankings calculation.
-        */
-
+        // 1. CURRENT STRENGTH
         let currentStrengthRaw = 0;
 
         for (let week = firstWeek; week <= finalWeek; week++) {
@@ -92,21 +47,7 @@ export const calculateTeamWindowScores = ({
             );
         }
 
-        /*
-            ------------------------------------------------
-            2. YOUTH / FUTURE VALUE
-            ------------------------------------------------
-
-            Only fantasy-relevant offensive positions are used here.
-
-            Each player's age score is weighted partly by projected
-            production, so an elite young starter matters more than
-            a random young bench player.
-
-            However, every eligible player receives a base weight,
-            so prospects with little immediate projection still count.
-        */
-
+        // 2. YOUTH / FUTURE VALUE
         const dynastyPlayers = rosterPlayers.filter(player =>
             ['QB', 'RB', 'WR', 'TE'].includes(player.pos)
         );
@@ -117,9 +58,7 @@ export const calculateTeamWindowScores = ({
         for (const player of dynastyPlayers) {
             const ageScore = getAgeValue(player.pos, player.age);
 
-            if (ageScore === null) {
-                continue;
-            }
+            if (ageScore === null) continue;
 
             const seasonProjection = getRemainingProjection(
                 player,
@@ -127,8 +66,6 @@ export const calculateTeamWindowScores = ({
                 finalWeek
             );
 
-            // Every rostered dynasty player matters at least somewhat.
-            // Productive players receive additional weight.
             const weight = 1 + seasonProjection / 100;
 
             youthWeightedTotal += ageScore * weight;
@@ -140,21 +77,7 @@ export const calculateTeamWindowScores = ({
                 ? youthWeightedTotal / youthWeightTotal
                 : 50;
 
-        /*
-            ------------------------------------------------
-            3. DEPTH
-            ------------------------------------------------
-
-            Estimate the amount of usable production beyond the
-            roster's top fantasy assets.
-
-            We calculate remaining-season projections for every
-            QB/RB/WR/TE and sort them.
-
-            The first group represents the core lineup.
-            Players behind that group contribute to depth.
-        */
-
+        // 3. DEPTH
         const projectedSkillPlayers = dynastyPlayers
             .map(player => ({
                 player,
@@ -166,42 +89,15 @@ export const calculateTeamWindowScores = ({
             }))
             .sort((a, b) => b.projection - a.projection);
 
-        /*
-            This league starts roughly:
-              1 QB
-              2 RB
-              3 WR
-              1 TE
-              1 FLEX
-
-            So the top 8 skill players approximate a core lineup.
-            Everything after that represents usable depth.
-        */
         const CORE_PLAYER_COUNT = 8;
 
-        const depthPlayers = projectedSkillPlayers.slice(
-            CORE_PLAYER_COUNT
-        );
+        const depthPlayers = projectedSkillPlayers.slice(CORE_PLAYER_COUNT);
 
         let depthRaw = 0;
-
-        /*
-            Do not let a giant bench create unlimited depth value.
-            The six most useful players behind the core matter most.
-        */
         const usefulDepth = depthPlayers.slice(0, 6);
 
         for (let i = 0; i < usefulDepth.length; i++) {
-            /*
-                Slight diminishing returns:
-
-                best bench asset  = 100%
-                second           = 90%
-                third            = 80%
-                ...
-            */
             const depthWeight = Math.max(0.5, 1 - i * 0.1);
-
             depthRaw += usefulDepth[i].projection * depthWeight;
         }
 
@@ -212,109 +108,63 @@ export const calculateTeamWindowScores = ({
         };
     }
 
-    /*
-        ------------------------------------------------
-        NORMALIZE AGAINST THE LEAGUE
-        ------------------------------------------------
+    // Normalize the component scores
+    const strengthValues = Object.values(rawScores).map(team => team.strengthRaw);
+    const youthValues = Object.values(rawScores).map(team => team.youthRaw);
+    const depthValues = Object.values(rawScores).map(team => team.depthRaw);
 
-        This means a score represents where a team stands compared
-        with the other USCCFFL rosters rather than an arbitrary
-        universal fantasy-football scale.
-    */
-
-    const strengthValues = Object.values(rawScores).map(
-        team => team.strengthRaw
-    );
-
-    const youthValues = Object.values(rawScores).map(
-        team => team.youthRaw
-    );
-
-    const depthValues = Object.values(rawScores).map(
-        team => team.depthRaw
-    );
-
-    const finalScores = {};
+    const componentScores = {};
 
     for (const rosterID in rawScores) {
         const team = rawScores[rosterID];
 
-        const strength = normalize(
-            team.strengthRaw,
-            strengthValues
-        );
+        const strength = normalize(team.strengthRaw, strengthValues);
+        const youth = normalize(team.youthRaw, youthValues);
+        const depth = normalize(team.depthRaw, depthValues);
 
-        const youth = normalize(
-            team.youthRaw,
-            youthValues
-        );
+        componentScores[rosterID] = {
+            strength,
+            youth,
+            depth,
+            winNowRaw:
+                strength * 0.80 +
+                depth * 0.20,
+            dynastyRaw:
+                strength * 0.45 +
+                youth * 0.35 +
+                depth * 0.20,
+            rebuildRaw:
+                youth * 0.55 +
+                depth * 0.25 +
+                (100 - strength) * 0.20
+        };
+    }
 
-        const depth = normalize(
-            team.depthRaw,
-            depthValues
-        );
+    // Re-normalize FINAL WN / DYN / REB so each category's top team = 100
+    const winNowValues = Object.values(componentScores).map(team => team.winNowRaw);
+    const dynastyValues = Object.values(componentScores).map(team => team.dynastyRaw);
+    const rebuildValues = Object.values(componentScores).map(team => team.rebuildRaw);
 
-        /*
-            ------------------------------------------------
-            FINAL SCORES
-            ------------------------------------------------
-        */
+    const finalScores = {};
 
-        // How capable is this team of winning right now?
-        const winNow =
-            strength * 0.80 +
-            depth * 0.20;
-
-        // How strong is the franchise both now and going forward?
-        const dynasty =
-            strength * 0.45 +
-            youth * 0.35 +
-            depth * 0.20;
-
-        /*
-            Rebuild is intentionally NOT just 100 - Win Now.
-
-            A good rebuilding roster should:
-              - be young
-              - have useful depth/assets
-              - generally be less competitive immediately
-
-            This allows a young powerhouse to have good dynasty value
-            without automatically being classified as a rebuild.
-        */
-        const rebuild =
-            youth * 0.55 +
-            depth * 0.25 +
-            (100 - strength) * 0.20;
+    for (const rosterID in componentScores) {
+        const team = componentScores[rosterID];
 
         finalScores[rosterID] = {
-            winNow: roundScore(winNow),
-            dynasty: roundScore(dynasty),
-            rebuild: roundScore(rebuild),
+            winNow: roundScore(normalize(team.winNowRaw, winNowValues)),
+            dynasty: roundScore(normalize(team.dynastyRaw, dynastyValues)),
+            rebuild: roundScore(normalize(team.rebuildRaw, rebuildValues)),
 
             components: {
-                strength: roundScore(strength),
-                youth: roundScore(youth),
-                depth: roundScore(depth)
+                strength: roundScore(team.strength),
+                youth: roundScore(team.youth),
+                depth: roundScore(team.depth)
             }
         };
     }
 
     return finalScores;
 };
-
-
-/*
-    ====================================================
-    PLAYER AGE CURVES
-    ====================================================
-
-    Returns a 0-100 future-value score based on position
-    and age.
-
-    These are intentionally different by position because
-    NFL aging curves are very different for RBs versus QBs.
-*/
 
 const getAgeValue = (position, age) => {
     age = parseFloat(age);
@@ -386,17 +236,6 @@ const getAgeValue = (position, age) => {
     }
 };
 
-
-/*
-    Linearly interpolate between age/value points.
-
-    Example:
-        age 26.5 between:
-            26 => 100
-            27 => 95
-
-        returns about 97.5
-*/
 const interpolateAge = (age, points) => {
     if (age <= points[0][0]) {
         return points[0][1];
@@ -413,29 +252,15 @@ const interpolateAge = (age, points) => {
         const [age2, value2] = points[i + 1];
 
         if (age >= age1 && age <= age2) {
-            const percentage =
-                (age - age1) /
-                (age2 - age1);
-
-            return (
-                value1 +
-                (value2 - value1) * percentage
-            );
+            const percentage = (age - age1) / (age2 - age1);
+            return value1 + (value2 - value1) * percentage;
         }
     }
 
     return 50;
 };
 
-
-/*
-    Sum one player's projections over the remaining season.
-*/
-const getRemainingProjection = (
-    player,
-    firstWeek,
-    finalWeek
-) => {
+const getRemainingProjection = (player, firstWeek, finalWeek) => {
     if (!player?.wi) {
         return 0;
     }
@@ -443,9 +268,7 @@ const getRemainingProjection = (
     let total = 0;
 
     for (let week = firstWeek; week <= finalWeek; week++) {
-        const projection = parseFloat(
-            player.wi?.[week]?.p ?? 0
-        );
+        const projection = parseFloat(player.wi?.[week]?.p ?? 0);
 
         if (Number.isFinite(projection)) {
             total += projection;
@@ -455,13 +278,6 @@ const getRemainingProjection = (
     return total;
 };
 
-
-/*
-    Convert a raw league value to a 0-100 scale.
-
-    Best team = 100
-    Worst team = 0
-*/
 const normalize = (value, values) => {
     if (!values.length) {
         return 50;
@@ -474,24 +290,13 @@ const normalize = (value, values) => {
         return 50;
     }
 
-    return clamp(
-        ((value - min) / (max - min)) * 100,
-        0,
-        100
-    );
+    return clamp(((value - min) / (max - min)) * 100, 0, 100);
 };
-
 
 const roundScore = value => {
-    return Math.round(
-        clamp(value, 0, 100)
-    );
+    return Math.round(clamp(value, 0, 100));
 };
 
-
 const clamp = (value, min, max) => {
-    return Math.min(
-        max,
-        Math.max(min, value)
-    );
+    return Math.min(max, Math.max(min, value));
 };
