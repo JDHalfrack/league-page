@@ -1,17 +1,9 @@
 <script>
 	import LinearProgress from '@smui/linear-progress';
     import {AllManagers} from '$lib/components';
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 
 	export let data;
 	const {managers, leagueTeamManagersData} = data;
-
-    onMount(() => {
-        if(!managers.length) {
-            goto('/');
-        }
-    })
 </script>
 
 <style>
