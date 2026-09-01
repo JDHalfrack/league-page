@@ -373,9 +373,11 @@
 
                 <p>
                     Historical matchup coverage remains
-                    visible because Phase 4 uses each week's
-                    Sleeper matchup `players` list as the
+                    visible because each completed week's
+                    Sleeper matchup `players` list is the
                     active-rostered positional comparison pool.
+                    Future current-season matchup placeholders
+                    are ignored.
                 </p>
             </div>
         </div>
