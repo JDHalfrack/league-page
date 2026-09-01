@@ -436,10 +436,6 @@
         <div class="columns">
 
 
-            <!-- =========================================
-                 POSITIVE
-                 ========================================= -->
-
             <section class="column">
 
                 <h2 class="columnTitle">
@@ -573,10 +569,6 @@
 
             </section>
 
-
-            <!-- =========================================
-                 NEGATIVE
-                 ========================================= -->
 
             <section class="column">
 
@@ -730,18 +722,22 @@
 
             Core Impact measures whether a game sits at a meaningful
             change in a manager's trajectory. The largest component
-            compares the manager's results across the two seasons
-            preceding the game's season with the following three
-            seasons, while shorter five-game and ten-game windows,
-            same-season movement, meaningful streaks, and
-            championship-bracket games provide additional context.
-            Once a game already clears the historical-impact threshold,
-            a close finish can add up to eight points. When historical
-            Sleeper projections are available, a projected underdog
-            winning can add up to four more points. Projection
-            differences under five points are treated as toss-ups.
-            Negative Impact scores use minus signs to represent a
-            downward change in trajectory.
+            compares a broad historical window before the game with
+            the period after it. That window normally reaches back
+            through the previous two seasons and forward through the
+            following three seasons. A substantial portion of the
+            game's own season is also included: seven or more earlier
+            games can join the pre-game sample, and eight or more
+            remaining games can join the post-game sample. Shorter
+            five-game and ten-game windows, same-season movement,
+            meaningful streaks, and championship-bracket games provide
+            additional context. Once a game already clears the
+            historical-impact threshold, a close finish can add up to
+            eight points. When historical Sleeper projections are
+            available, a projected underdog winning can add up to four
+            more points. Projection differences under five points are
+            treated as toss-ups. Negative Impact scores use minus signs
+            to represent a downward change in trajectory.
 
         </div>
 
