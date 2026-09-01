@@ -20,31 +20,28 @@ import {
     HISTORICALLY IMPACTFUL GAMES
     =====================================================
 
-    PURPOSE
+    Core Impact asks:
 
-    Identify wins and losses after which a manager's
-    results materially changed.
+    Did this game sit at or near a meaningful change in
+    the manager's competitive trajectory?
 
-    Positive Impact:
-        a WIN followed by measurable improvement.
+    Core Impact includes:
 
-    Negative Impact:
-        a LOSS followed by measurable decline.
+    - long-term multi-season trajectory
+    - next/previous five games
+    - next/previous ten games
+    - same-season trajectory
+    - streaks begun
+    - streaks ended
+    - championship-bracket significance
 
-    IMPORTANT
+    AFTER a game independently qualifies as impactful:
 
-    Game closeness is NOT used to decide whether a game
-    was historically impactful.
+    - close games can receive up to +8
+    - projection upsets can receive up to +4
 
-    First:
-        calculate CORE historical impact.
-
-    Then:
-        if the game clears the impact threshold,
-        add a small DRAMA BONUS for close games.
-
-    The top games are displayed in IMPACT RANK order,
-    strongest first.
+    Projection differences below five points are treated
+    as toss-ups, not true favorites/underdogs.
     =====================================================
 */
 
@@ -53,31 +50,68 @@ const TOP_COUNT =
     50;
 
 
-/*
-    A game must have meaningful trajectory evidence before
-    any drama bonus is allowed.
-*/
-
 const MIN_CORE_IMPACT =
     25;
 
 
 /*
-    Prevent the core from consuming the entire 100-point
-    range.
-
-    The final eight points remain available for drama.
+    88 core + 8 drama + 4 upset = 100.
 */
 
 const MAX_CORE_SCORE =
-    92;
+    88;
+
+
+const MAX_DRAMA_BONUS =
+    8;
+
+
+const MAX_UPSET_BONUS =
+    4;
+
+
+const PROJECTION_FAVORITE_THRESHOLD =
+    5;
+
+
+const PROJECTION_QUERY =
+    (
+        'season_type=regular' +
+        '&position[]=DB' +
+        '&position[]=DEF' +
+        '&position[]=DL' +
+        '&position[]=FLEX' +
+        '&position[]=IDP_FLEX' +
+        '&position[]=K' +
+        '&position[]=LB' +
+        '&position[]=QB' +
+        '&position[]=RB' +
+        '&position[]=REC_FLEX' +
+        '&position[]=SUPER_FLEX' +
+        '&position[]=TE' +
+        '&position[]=WR' +
+        '&position[]=WRRB_FLEX' +
+        '&order_by=ppr'
+    );
 
 
 let cachedImpactData =
     null;
 
+
 let pendingImpactData =
     null;
+
+
+/*
+    Raw historical projection response cache.
+
+    key:
+        year|week
+*/
+
+const projectionCache =
+    new Map();
 
 
 /*
@@ -107,6 +141,11 @@ export const getHistoricallyImpactfulGames =
         }
 
 
+        if (refresh) {
+            projectionCache.clear();
+        }
+
+
         pendingImpactData =
             buildHistoricallyImpactfulGames();
 
@@ -114,6 +153,7 @@ export const getHistoricallyImpactfulGames =
         try {
             cachedImpactData =
                 await pendingImpactData;
+
 
             return cachedImpactData;
         }
@@ -143,11 +183,6 @@ const buildHistoricallyImpactfulGames =
             );
 
 
-        /*
-            Turn every actual game into one chronological
-            entry for each participating manager.
-        */
-
         const managerGames =
             buildManagerGameHistories(
                 games
@@ -156,6 +191,7 @@ const buildHistoricallyImpactfulGames =
 
         const positiveCandidates =
             [];
+
 
         const negativeCandidates =
             [];
@@ -189,8 +225,10 @@ const buildHistoricallyImpactfulGames =
                     const impact =
                         calculateImpact({
                             history,
+
                             index:
                                 i,
+
                             direction:
                                 'positive'
                         });
@@ -219,8 +257,10 @@ const buildHistoricallyImpactfulGames =
                     const impact =
                         calculateImpact({
                             history,
+
                             index:
                                 i,
+
                             direction:
                                 'negative'
                         });
@@ -245,13 +285,20 @@ const buildHistoricallyImpactfulGames =
 
 
         /*
-            Select AND DISPLAY the strongest 50
-            by final Impact score.
+            Projection is deliberately evaluated AFTER
+            Core Impact qualification.
 
-            #1 = greatest historical impact.
+            A random upset cannot create an Impact entry.
+        */
 
-            Unlike the first version, we do NOT re-sort
-            these chronologically afterward.
+        await applyProjectionBonuses(
+            positiveCandidates,
+            negativeCandidates
+        );
+
+
+        /*
+            Highest magnitude first.
         */
 
         const positiveTop =
@@ -274,6 +321,21 @@ const buildHistoricallyImpactfulGames =
                     0,
                     TOP_COUNT
                 );
+
+
+        /*
+            Remove private calculation-only payload before
+            returning to the page.
+        */
+
+        positiveTop.forEach(
+            cleanImpactEntry
+        );
+
+
+        negativeTop.forEach(
+            cleanImpactEntry
+        );
 
 
         return {
@@ -307,15 +369,7 @@ const buildHistoricallyImpactfulGames =
 
 /*
     =====================================================
-    LOAD ALL GAMES
-    =====================================================
-
-    Includes:
-
-    - regular season
-    - Sleeper winners/championship bracket
-
-    Does NOT include consolation/lower-bracket games.
+    LOAD ALL HISTORICAL GAMES
     =====================================================
 */
 
@@ -361,6 +415,12 @@ const loadAllHistoricalGames =
                         ?.settings
                         ?.playoff_week_start
                 );
+
+
+            const scoringSettings =
+                leagueData
+                    ?.scoring_settings ||
+                {};
 
 
             if (
@@ -441,7 +501,9 @@ const loadAllHistoricalGames =
 
                             week,
 
-                            teamManagers
+                            teamManagers,
+
+                            scoringSettings
                         });
 
 
@@ -458,10 +520,6 @@ const loadAllHistoricalGames =
                 }
 
 
-                /*
-                    Championship bracket playoffs.
-                */
-
                 const playoffGames =
                     await loadWinnersBracketGames({
                         leagueID:
@@ -471,7 +529,9 @@ const loadAllHistoricalGames =
 
                         year,
 
-                        teamManagers
+                        teamManagers,
+
+                        scoringSettings
                     });
 
 
@@ -495,8 +555,8 @@ const loadAllHistoricalGames =
 
 
         /*
-            Manager histories still need chronological game
-            order in order to calculate before/after impact.
+            Chronological order is necessary for all
+            before/after calculations.
         */
 
         games.sort(
@@ -518,7 +578,8 @@ const processRegularWeek = ({
     rawWeek,
     year,
     week,
-    teamManagers
+    teamManagers,
+    scoringSettings
 }) => {
     if (
         !Array.isArray(
@@ -577,7 +638,9 @@ const processRegularWeek = ({
                 playoffLabel:
                     null,
 
-                teamManagers
+                teamManagers,
+
+                scoringSettings
             });
 
 
@@ -604,7 +667,8 @@ const loadWinnersBracketGames =
         leagueID,
         leagueData,
         year,
-        teamManagers
+        teamManagers,
+        scoringSettings
     }) => {
 
         const response =
@@ -708,9 +772,12 @@ const loadWinnersBracketGames =
                     .then(
                         async res => ({
                             round,
+
                             week,
+
                             ok:
                                 res.ok,
+
                             data:
                                 res.ok
                                     ? await res.json()
@@ -783,6 +850,7 @@ const loadWinnersBracketGames =
                     node.t1
                 );
 
+
             const rosterTwo =
                 Number(
                     node.t2
@@ -817,16 +885,10 @@ const loadWinnersBracketGames =
             }
 
 
-            const label =
-                getPlayoffLabel(
-                    round,
-                    maxRound
-                );
-
-
             const game =
                 createGame({
                     sideOne,
+
                     sideTwo,
 
                     year,
@@ -838,9 +900,14 @@ const loadWinnersBracketGames =
                         'playoff',
 
                     playoffLabel:
-                        label,
+                        getPlayoffLabel(
+                            round,
+                            maxRound
+                        ),
 
-                    teamManagers
+                    teamManagers,
+
+                    scoringSettings
                 });
 
 
@@ -919,12 +986,14 @@ const createGame = ({
     week,
     type,
     playoffLabel,
-    teamManagers
+    teamManagers,
+    scoringSettings
 }) => {
     const scoreOne =
         getSleeperPoints(
             sideOne
         );
+
 
     const scoreTwo =
         getSleeperPoints(
@@ -933,7 +1002,7 @@ const createGame = ({
 
 
     /*
-        Future matchup shell.
+        Future/unplayed matchup.
     */
 
     if (
@@ -945,8 +1014,8 @@ const createGame = ({
 
 
     /*
-        Ties have no positive-win / negative-loss
-        direction in this version.
+        Ties have no winner/loser trajectory direction in
+        this version.
     */
 
     if (
@@ -962,6 +1031,7 @@ const createGame = ({
             sideOne.roster_id
         );
 
+
     const rosterTwo =
         Number(
             sideTwo.roster_id
@@ -974,6 +1044,7 @@ const createGame = ({
             year,
             rosterOne
         );
+
 
     const managersTwo =
         getRosterManagers(
@@ -996,10 +1067,23 @@ const createGame = ({
         scoreTwo;
 
 
+    const winnerSide =
+        oneWon
+            ? sideOne
+            : sideTwo;
+
+
+    const loserSide =
+        oneWon
+            ? sideTwo
+            : sideOne;
+
+
     const winnerManagers =
         oneWon
             ? managersOne
             : managersTwo;
+
 
     const loserManagers =
         oneWon
@@ -1012,6 +1096,7 @@ const createGame = ({
             ? rosterOne
             : rosterTwo;
 
+
     const loserRosterID =
         oneWon
             ? rosterTwo
@@ -1022,6 +1107,7 @@ const createGame = ({
         oneWon
             ? scoreOne
             : scoreTwo;
+
 
     const loserScore =
         oneWon
@@ -1074,14 +1160,34 @@ const createGame = ({
             roundScore(
                 winnerScore -
                 loserScore
-            )
+            ),
+
+        /*
+            Retained only so an already-qualified Impact
+            game can later be checked against historical
+            pregame projections.
+        */
+
+        winnerStarters:
+            getStarterIDs(
+                winnerSide
+            ),
+
+        loserStarters:
+            getStarterIDs(
+                loserSide
+            ),
+
+        scoringSettings:
+            scoringSettings ||
+            {}
     };
 };
 
 
 /*
     =====================================================
-    UNIQUE GAMES
+    UNIQUE GAME
     =====================================================
 */
 
@@ -1125,6 +1231,7 @@ const addUniqueGame = (
     seen.add(
         key
     );
+
 
     games.push(
         game
@@ -1257,7 +1364,7 @@ const addManagerGame = (
 
 /*
     =====================================================
-    CALCULATE IMPACT
+    CALCULATE CORE IMPACT
     =====================================================
 */
 
@@ -1271,6 +1378,74 @@ const calculateImpact = ({
             index
         ];
 
+
+    let rawCore =
+        0;
+
+
+    const reasons =
+        [];
+
+
+    /*
+        =================================================
+        LONG-TERM HISTORICAL TRAJECTORY
+        =================================================
+
+        Compare:
+
+        two completed calendar seasons BEFORE this game's
+        season
+
+        versus
+
+        three seasons AFTER this game's season.
+
+        The current season is intentionally excluded from
+        this component. Immediate/current-season behavior
+        is measured separately below.
+
+        This allows a true regime change such as:
+
+        19-4 before
+        10-32 afterward
+
+        to become one of the strongest pieces of evidence.
+    */
+
+    const longTermSignal =
+        calculateLongTermSignal({
+            history,
+
+            index,
+
+            current,
+
+            direction
+        });
+
+
+    rawCore +=
+        longTermSignal.score;
+
+
+    if (
+        longTermSignal.strong
+    ) {
+        reasons.push(
+            buildLongTermReason(
+                longTermSignal,
+                direction
+            )
+        );
+    }
+
+
+    /*
+        =================================================
+        PREVIOUS/NEXT FIVE
+        =================================================
+    */
 
     const before5 =
         history.slice(
@@ -1289,37 +1464,6 @@ const calculateImpact = ({
         );
 
 
-    const before10 =
-        history.slice(
-            Math.max(
-                0,
-                index - 10
-            ),
-            index
-        );
-
-
-    const after10 =
-        history.slice(
-            index + 1,
-            index + 11
-        );
-
-
-    let rawCore =
-        0;
-
-
-    const reasons =
-        [];
-
-
-    /*
-        =================================================
-        SHORT-TERM TRAJECTORY
-        =================================================
-    */
-
     const shortSignal =
         calculateWindowSignal({
             before:
@@ -1334,7 +1478,7 @@ const calculateImpact = ({
             direction,
 
             maxPoints:
-                32
+                18
         });
 
 
@@ -1361,11 +1505,28 @@ const calculateImpact = ({
 
     /*
         =================================================
-        EXTENDED TRAJECTORY
+        PREVIOUS/NEXT TEN
         =================================================
     */
 
-    const longSignal =
+    const before10 =
+        history.slice(
+            Math.max(
+                0,
+                index - 10
+            ),
+            index
+        );
+
+
+    const after10 =
+        history.slice(
+            index + 1,
+            index + 11
+        );
+
+
+    const mediumSignal =
         calculateWindowSignal({
             before:
                 before10,
@@ -1379,21 +1540,21 @@ const calculateImpact = ({
             direction,
 
             maxPoints:
-                20
+                12
         });
 
 
     rawCore +=
-        longSignal.score;
+        mediumSignal.score;
 
 
     if (
-        longSignal.strong
+        mediumSignal.strong
     ) {
         reasons.push(
             buildWindowReason({
                 signal:
-                    longSignal,
+                    mediumSignal,
 
                 direction,
 
@@ -1450,7 +1611,7 @@ const calculateImpact = ({
             direction,
 
             maxPoints:
-                15
+                8
         });
 
 
@@ -1499,19 +1660,15 @@ const calculateImpact = ({
     if (
         startedStreak >= 2
     ) {
-        const streakPoints =
+        rawCore +=
             Math.min(
-                15,
+                10,
                 (
                     startedStreak -
                     1
                 ) *
-                4
+                3
             );
-
-
-        rawCore +=
-            streakPoints;
 
 
         reasons.push(
@@ -1553,9 +1710,9 @@ const calculateImpact = ({
     ) {
         rawCore +=
             Math.min(
-                10,
+                7,
                 endedStreak *
-                2.5
+                2
             );
 
 
@@ -1574,7 +1731,7 @@ const calculateImpact = ({
 
     /*
         =================================================
-        PLAYOFF LEVERAGE
+        PLAYOFF SIGNIFICANCE
         =================================================
     */
 
@@ -1583,27 +1740,27 @@ const calculateImpact = ({
         'playoff'
     ) {
         let playoffBonus =
-            4;
+            3;
 
 
         if (
             current.playoffLabel ===
-                'Semifinal'
+            'Semifinal'
         ) {
             playoffBonus =
-                7;
+                6;
         }
 
 
         if (
             current.playoffLabel ===
-                'Championship'
+            'Championship'
         ) {
             playoffBonus =
                 direction ===
                     'positive'
-                    ? 12
-                    : 10;
+                    ? 10
+                    : 8;
         }
 
 
@@ -1639,14 +1796,10 @@ const calculateImpact = ({
 
     /*
         =================================================
-        DRAMA BONUS
+        CLOSE-GAME BONUS
         =================================================
 
-        This remains a positive MAGNITUDE internally for
-        both columns.
-
-        Negative signs are purely presentation: -84 means
-        an 84-point negative historical impact.
+        Only an already-impactful game gets this bonus.
     */
 
     const dramaBonus =
@@ -1670,20 +1823,26 @@ const calculateImpact = ({
     }
 
 
-    const finalScore =
-        Math.min(
-            100,
-            coreScore +
-            dramaBonus
-        );
-
-
     return {
         coreScore,
 
         dramaBonus,
 
-        finalScore,
+        /*
+            Projection bonus is filled later because only
+            qualifying games trigger historical projection
+            API requests.
+        */
+
+        projectionBonus:
+            0,
+
+        finalScore:
+            Math.min(
+                100,
+                coreScore +
+                dramaBonus
+            ),
 
         reasons:
             selectReasons(
@@ -1693,19 +1852,330 @@ const calculateImpact = ({
         label:
             getImpactLabel({
                 direction,
+
                 startedStreak,
+
                 endedStreak,
+
                 current,
+
+                longTermSignal,
+
                 shortSignal,
-                longSignal
-            })
+
+                mediumSignal
+            }),
+
+        longTermSignal
     };
 };
 
 
 /*
     =====================================================
-    WINDOW SIGNAL
+    LONG-TERM TRAJECTORY
+    =====================================================
+*/
+
+const calculateLongTermSignal = ({
+    history,
+    index,
+    current,
+    direction
+}) => {
+    const earliestBeforeYear =
+        current.year -
+        2;
+
+
+    const latestAfterYear =
+        current.year +
+        3;
+
+
+    const before =
+        history.filter(
+            (
+                game,
+                gameIndex
+            ) =>
+                gameIndex <
+                    index &&
+                game.year >=
+                    earliestBeforeYear &&
+                game.year <
+                    current.year
+        );
+
+
+    const after =
+        history.filter(
+            (
+                game,
+                gameIndex
+            ) =>
+                gameIndex >
+                    index &&
+                game.year >
+                    current.year &&
+                game.year <=
+                    latestAfterYear
+        );
+
+
+    const beforeYears =
+        uniqueSeasonCount(
+            before
+        );
+
+
+    const afterYears =
+        uniqueSeasonCount(
+            after
+        );
+
+
+    const beforeRate =
+        getWinRate(
+            before
+        );
+
+
+    const afterRate =
+        getWinRate(
+            after
+        );
+
+
+    if (
+        beforeRate ===
+            null ||
+        afterRate ===
+            null ||
+        before.length <
+            4 ||
+        after.length <
+            4
+    ) {
+        return {
+            score:
+                0,
+
+            strong:
+                false,
+
+            beforeWins:
+                countWins(
+                    before
+                ),
+
+            beforeGames:
+                before.length,
+
+            afterWins:
+                countWins(
+                    after
+                ),
+
+            afterGames:
+                after.length,
+
+            beforeYears,
+
+            afterYears,
+
+            difference:
+                0
+        };
+    }
+
+
+    const rawDifference =
+        direction ===
+            'positive'
+            ? (
+                afterRate -
+                beforeRate
+            )
+            : (
+                beforeRate -
+                afterRate
+            );
+
+
+    const difference =
+        Math.max(
+            0,
+            rawDifference
+        );
+
+
+    /*
+        A .600 win-percentage swing is treated as roughly
+        the practical maximum trajectory reversal.
+
+        Example:
+
+        .826 -> .238 = .588
+
+        That receives almost the full trajectory weight.
+    */
+
+    const changeStrength =
+        Math.min(
+            1,
+            difference /
+                0.6
+        );
+
+
+    /*
+        Require meaningful game volume on both sides.
+    */
+
+    const gameEvidence =
+        Math.min(
+            1,
+            Math.min(
+                before.length,
+                after.length
+            ) /
+                12
+        );
+
+
+    /*
+        Also reward persistence across actual seasons.
+
+        Full evidence:
+            two prior seasons
+            three following seasons
+
+        Recent games with fewer future seasons naturally
+        receive less long-term credit.
+    */
+
+    const seasonEvidence =
+        Math.sqrt(
+            Math.min(
+                1,
+                beforeYears /
+                    2
+            ) *
+            Math.min(
+                1,
+                afterYears /
+                    3
+            )
+        );
+
+
+    const score =
+        35 *
+        changeStrength *
+        gameEvidence *
+        seasonEvidence;
+
+
+    return {
+        score,
+
+        strong:
+            score >=
+                12,
+
+        beforeWins:
+            countWins(
+                before
+            ),
+
+        beforeGames:
+            before.length,
+
+        afterWins:
+            countWins(
+                after
+            ),
+
+        afterGames:
+            after.length,
+
+        beforeYears,
+
+        afterYears,
+
+        beforeRate,
+
+        afterRate,
+
+        difference
+    };
+};
+
+
+/*
+    =====================================================
+    LONG-TERM EXPLANATION
+    =====================================================
+*/
+
+const buildLongTermReason = (
+    signal,
+    direction
+) => {
+    const beforeRecord =
+        formatRecordFragment(
+            signal.beforeWins,
+            signal.beforeGames
+        );
+
+
+    const afterRecord =
+        formatRecordFragment(
+            signal.afterWins,
+            signal.afterGames
+        );
+
+
+    const beforeSeasonWord =
+        signal.beforeYears ===
+            1
+            ? 'season'
+            : 'seasons';
+
+
+    const afterSeasonWord =
+        signal.afterYears ===
+            1
+            ? 'season'
+            : 'seasons';
+
+
+    if (
+        direction ===
+        'positive'
+    ) {
+        return (
+            `Long-term trajectory improved from ${beforeRecord} ` +
+            `across the prior ${signal.beforeYears} ${beforeSeasonWord} ` +
+            `to ${afterRecord} across the following ` +
+            `${signal.afterYears} ${afterSeasonWord}.`
+        );
+    }
+
+
+    return (
+        `Long-term trajectory fell from ${beforeRecord} ` +
+        `across the prior ${signal.beforeYears} ${beforeSeasonWord} ` +
+        `to ${afterRecord} across the following ` +
+        `${signal.afterYears} ${afterSeasonWord}.`
+    );
+};
+
+
+/*
+    =====================================================
+    ORDINARY BEFORE/AFTER WINDOW
     =====================================================
 */
 
@@ -1720,6 +2190,7 @@ const calculateWindowSignal = ({
         getWinRate(
             before
         );
+
 
     const afterRate =
         getWinRate(
@@ -1791,7 +2262,8 @@ const calculateWindowSignal = ({
             evidence /
             Math.max(
                 3,
-                target * 0.6
+                target *
+                    0.6
             )
         );
 
@@ -1880,7 +2352,7 @@ const buildWindowReason = ({
 
 /*
     =====================================================
-    DRAMA
+    CLOSE-GAME BONUS
     =====================================================
 */
 
@@ -1905,7 +2377,7 @@ const getDramaBonus =
         if (
             value <= 1
         ) {
-            return 8;
+            return MAX_DRAMA_BONUS;
         }
 
 
@@ -1943,6 +2415,541 @@ const getDramaBonus =
 
 /*
     =====================================================
+    HISTORICAL PROJECTION / UPSET BONUS
+    =====================================================
+
+    The normal matchup page already calculates projections
+    by summing each starter's Sleeper projection under the
+    league's scoring settings.
+
+    We do the same here.
+
+    IMPORTANT:
+
+    - projection gap < 5 = toss-up
+    - favorite losing = upset
+    - only already-qualified Impact games are checked
+    - maximum adjustment = 4
+    =====================================================
+*/
+
+const applyProjectionBonuses =
+    async (
+        positiveCandidates,
+        negativeCandidates
+    ) => {
+
+        const allCandidates =
+            [
+                ...positiveCandidates,
+                ...negativeCandidates
+            ];
+
+
+        const uniqueWeekKeys =
+            [
+                ...new Set(
+                    allCandidates.map(
+                        candidate =>
+                            (
+                                `${candidate.year}|` +
+                                `${candidate.week}`
+                            )
+                    )
+                )
+            ];
+
+
+        const projectionPromises =
+            uniqueWeekKeys.map(
+                async key => {
+                    const [
+                        year,
+                        week
+                    ] =
+                        key
+                            .split(
+                                '|'
+                            )
+                            .map(
+                                Number
+                            );
+
+
+                    const data =
+                        await getHistoricalProjectionWeek(
+                            year,
+                            week
+                        );
+
+
+                    return {
+                        key,
+                        data
+                    };
+                }
+            );
+
+
+        const resolved =
+            await Promise.all(
+                projectionPromises
+            );
+
+
+        const weekMap =
+            new Map();
+
+
+        for (
+            const item
+            of resolved
+        ) {
+            weekMap.set(
+                item.key,
+                item.data
+            );
+        }
+
+
+        for (
+            const candidate
+            of allCandidates
+        ) {
+            const key =
+                (
+                    `${candidate.year}|` +
+                    `${candidate.week}`
+                );
+
+
+            const projectionRows =
+                weekMap.get(
+                    key
+                );
+
+
+            if (
+                !Array.isArray(
+                    projectionRows
+                ) ||
+                !projectionRows.length
+            ) {
+                continue;
+            }
+
+
+            const winnerProjection =
+                calculateLineupProjection({
+                    starterIDs:
+                        candidate._winnerStarters,
+
+                    projectionRows,
+
+                    scoringSettings:
+                        candidate._scoringSettings
+                });
+
+
+            const loserProjection =
+                calculateLineupProjection({
+                    starterIDs:
+                        candidate._loserStarters,
+
+                    projectionRows,
+
+                    scoringSettings:
+                        candidate._scoringSettings
+                });
+
+
+            if (
+                winnerProjection <= 0 ||
+                loserProjection <= 0
+            ) {
+                continue;
+            }
+
+
+            candidate.winnerProjection =
+                roundScore(
+                    winnerProjection
+                );
+
+
+            candidate.loserProjection =
+                roundScore(
+                    loserProjection
+                );
+
+
+            /*
+                An upset occurred only if the actual LOSER
+                was projected at least five points higher
+                than the actual WINNER.
+            */
+
+            const projectedFavoriteGap =
+                loserProjection -
+                winnerProjection;
+
+
+            candidate.projectedFavoriteGap =
+                roundScore(
+                    projectedFavoriteGap
+                );
+
+
+            if (
+                projectedFavoriteGap <
+                PROJECTION_FAVORITE_THRESHOLD
+            ) {
+                continue;
+            }
+
+
+            const projectionBonus =
+                getUpsetBonus(
+                    projectedFavoriteGap
+                );
+
+
+            if (
+                projectionBonus <= 0
+            ) {
+                continue;
+            }
+
+
+            candidate.projectionBonus =
+                projectionBonus;
+
+
+            candidate.finalScore =
+                Math.min(
+                    100,
+                    candidate.coreScore +
+                        candidate.dramaBonus +
+                        projectionBonus
+                );
+
+
+            /*
+                Same upset has two legitimate historical
+                perspectives:
+
+                Positive:
+                    underdog won.
+
+                Negative:
+                    favorite lost.
+            */
+
+            if (
+                candidate.direction ===
+                'positive'
+            ) {
+                candidate.reasons =
+                    selectReasons([
+                        ...candidate.reasons,
+
+                        (
+                            `Won despite being projected ` +
+                            `${formatPoints(projectedFavoriteGap)} ` +
+                            `points lower.`
+                        )
+                    ]);
+            }
+            else {
+                candidate.reasons =
+                    selectReasons([
+                        ...candidate.reasons,
+
+                        (
+                            `Lost despite being projected ` +
+                            `${formatPoints(projectedFavoriteGap)} ` +
+                            `points higher.`
+                        )
+                    ]);
+            }
+        }
+    };
+
+
+/*
+    =====================================================
+    FETCH ONE HISTORICAL PROJECTION WEEK
+    =====================================================
+*/
+
+const getHistoricalProjectionWeek =
+    async (
+        year,
+        week
+    ) => {
+
+        const key =
+            `${year}|${week}`;
+
+
+        if (
+            projectionCache.has(
+                key
+            )
+        ) {
+            return projectionCache.get(
+                key
+            );
+        }
+
+
+        try {
+            const response =
+                await fetch(
+                    (
+                        `https://api.sleeper.app/projections/nfl/` +
+                        `${year}/${week}?${PROJECTION_QUERY}`
+                    ),
+                    {
+                        compress:
+                            true
+                    }
+                );
+
+
+            if (!response.ok) {
+                projectionCache.set(
+                    key,
+                    []
+                );
+
+
+                return [];
+            }
+
+
+            const data =
+                await response.json();
+
+
+            const result =
+                Array.isArray(
+                    data
+                )
+                    ? data
+                    : [];
+
+
+            projectionCache.set(
+                key,
+                result
+            );
+
+
+            return result;
+        }
+        catch {
+            /*
+                Historical projection availability should
+                never break the Impact page.
+
+                If Sleeper does not retain a particular
+                old week, that game simply receives no
+                projection bonus.
+            */
+
+            projectionCache.set(
+                key,
+                []
+            );
+
+
+            return [];
+        }
+    };
+
+
+/*
+    =====================================================
+    CALCULATE LINEUP PROJECTION
+    =====================================================
+*/
+
+const calculateLineupProjection = ({
+    starterIDs,
+    projectionRows,
+    scoringSettings
+}) => {
+    if (
+        !Array.isArray(
+            starterIDs
+        ) ||
+        !starterIDs.length
+    ) {
+        return 0;
+    }
+
+
+    const projectionMap =
+        new Map();
+
+
+    for (
+        const row
+        of projectionRows
+    ) {
+        const playerID =
+            String(
+                row?.player_id ||
+                ''
+            );
+
+
+        if (!playerID) {
+            continue;
+        }
+
+
+        projectionMap.set(
+            playerID,
+            calculatePlayerProjection(
+                row?.stats,
+                scoringSettings
+            )
+        );
+    }
+
+
+    let total =
+        0;
+
+
+    for (
+        const starterID
+        of starterIDs
+    ) {
+        total +=
+            projectionMap.get(
+                String(
+                    starterID
+                )
+            ) ||
+            0;
+    }
+
+
+    return roundScore(
+        total
+    );
+};
+
+
+/*
+    Same method used by the site's existing projection
+    endpoint.
+*/
+
+const calculatePlayerProjection = (
+    projectedStats,
+    scoringSettings
+) => {
+    if (
+        !projectedStats ||
+        !scoringSettings
+    ) {
+        return 0;
+    }
+
+
+    let score =
+        0;
+
+
+    for (
+        const stat
+        of Object.keys(
+            projectedStats
+        )
+    ) {
+        const multiplier =
+            Number(
+                scoringSettings[
+                    stat
+                ]
+            ) ||
+            0;
+
+
+        score +=
+            (
+                Number(
+                    projectedStats[
+                        stat
+                    ]
+                ) ||
+                0
+            ) *
+            multiplier;
+    }
+
+
+    return score;
+};
+
+
+/*
+    =====================================================
+    UPSET BONUS
+    =====================================================
+*/
+
+const getUpsetBonus =
+    projectedGap => {
+
+        const gap =
+            Number(
+                projectedGap
+            );
+
+
+        if (
+            !Number.isFinite(
+                gap
+            ) ||
+            gap <
+                PROJECTION_FAVORITE_THRESHOLD
+        ) {
+            return 0;
+        }
+
+
+        if (
+            gap < 10
+        ) {
+            return 1;
+        }
+
+
+        if (
+            gap < 15
+        ) {
+            return 2;
+        }
+
+
+        if (
+            gap < 20
+        ) {
+            return 3;
+        }
+
+
+        return MAX_UPSET_BONUS;
+    };
+
+
+/*
+    =====================================================
     IMPACT LABEL
     =====================================================
 */
@@ -1952,17 +2959,30 @@ const getImpactLabel = ({
     startedStreak,
     endedStreak,
     current,
+    longTermSignal,
     shortSignal,
-    longSignal
+    mediumSignal
 }) => {
     if (
         current.playoffLabel ===
-            'Championship'
+        'Championship'
     ) {
         return direction ===
             'positive'
             ? 'CHAMPIONSHIP BREAKTHROUGH'
             : 'CHAMPIONSHIP LOSS';
+    }
+
+
+    if (
+        longTermSignal.strong &&
+        longTermSignal.score >=
+            22
+    ) {
+        return direction ===
+            'positive'
+            ? 'PROGRAM TURNING POINT'
+            : 'PROGRAM COLLAPSE POINT';
     }
 
 
@@ -1996,7 +3016,7 @@ const getImpactLabel = ({
 
     if (
         shortSignal.strong ||
-        longSignal.strong
+        mediumSignal.strong
     ) {
         return direction ===
             'positive'
@@ -2077,6 +3097,9 @@ const createImpactEntry = (
         dramaBonus:
             impact.dramaBonus,
 
+        projectionBonus:
+            impact.projectionBonus,
+
         finalScore:
             impact.finalScore,
 
@@ -2084,9 +3107,85 @@ const createImpactEntry = (
             impact.label,
 
         reasons:
-            impact.reasons
+            impact.reasons,
+
+        /*
+            Useful transparent data for a very large
+            long-term signal.
+        */
+
+        longTerm:
+            impact.longTermSignal
+                ?.strong
+                ? {
+                    beforeWins:
+                        impact
+                            .longTermSignal
+                            .beforeWins,
+
+                    beforeGames:
+                        impact
+                            .longTermSignal
+                            .beforeGames,
+
+                    afterWins:
+                        impact
+                            .longTermSignal
+                            .afterWins,
+
+                    afterGames:
+                        impact
+                            .longTermSignal
+                            .afterGames,
+
+                    beforeYears:
+                        impact
+                            .longTermSignal
+                            .beforeYears,
+
+                    afterYears:
+                        impact
+                            .longTermSignal
+                            .afterYears
+                }
+                : null,
+
+        /*
+            Private projection-calculation fields.
+        */
+
+        _winnerStarters:
+            game.winnerStarters,
+
+        _loserStarters:
+            game.loserStarters,
+
+        _scoringSettings:
+            game.scoringSettings
     };
 };
+
+
+/*
+    =====================================================
+    CLEAN PRIVATE FIELDS
+    =====================================================
+*/
+
+const cleanImpactEntry =
+    entry => {
+
+        delete entry
+            ._winnerStarters;
+
+
+        delete entry
+            ._loserStarters;
+
+
+        delete entry
+            ._scoringSettings;
+    };
 
 
 /*
@@ -2189,8 +3288,20 @@ const countWins =
         return games.filter(
             game =>
                 game.result ===
-                    'W'
+                'W'
         ).length;
+    };
+
+
+const uniqueSeasonCount =
+    games => {
+
+        return new Set(
+            games.map(
+                game =>
+                    game.year
+            )
+        ).size;
     };
 
 
@@ -2203,13 +3314,8 @@ const formatRecordFragment = (
     }
 
 
-    const losses =
-        games -
-        wins;
-
-
     return (
-        `${wins}-${losses}`
+        `${wins}-${games - wins}`
     );
 };
 
@@ -2281,6 +3387,39 @@ const renderManagerNames = (
         ' / '
     );
 };
+
+
+/*
+    =====================================================
+    STARTERS
+    =====================================================
+*/
+
+const getStarterIDs =
+    side => {
+
+        if (
+            !Array.isArray(
+                side?.starters
+            )
+        ) {
+            return [];
+        }
+
+
+        return side.starters
+            .filter(
+                starter =>
+                    starter &&
+                    starter != 0
+            )
+            .map(
+                starter =>
+                    String(
+                        starter
+                    )
+            );
+    };
 
 
 /*
@@ -2420,15 +3559,22 @@ const selectReasons =
                 normalized
             );
 
+
             unique.push(
                 reason
             );
         }
 
 
+        /*
+            Long-term trajectory normally arrives first,
+            so a major regime-change explanation will not
+            get pushed off the card.
+        */
+
         return unique.slice(
             0,
-            4
+            5
         );
     };
 
@@ -2448,6 +3594,10 @@ const compareImpactStrength = (
             a.finalScore ||
         b.coreScore -
             a.coreScore ||
+        b.projectionBonus -
+            a.projectionBonus ||
+        b.dramaBonus -
+            a.dramaBonus ||
         a.margin -
             b.margin ||
         b.year -
@@ -2459,8 +3609,7 @@ const compareImpactStrength = (
 
 
 /*
-    Chronological sorting remains necessary internally
-    when constructing each manager's history.
+    Internal chronological ordering only.
 */
 
 const compareChronological = (
