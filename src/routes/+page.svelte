@@ -18,20 +18,55 @@
         z-index: 1;
     }
 
-    #main {
-        flex-grow: 1;
-        min-width: 320px;
-        margin: 0 auto;
-        padding: 60px 0;
-    }
+	#main {
+    	flex-grow: 1;
+    	min-width: 320px;
+    	margin: 0 auto;
+    	padding: 60px 40px;
+	}
 
-    .text {
-        padding: 0 30px;
-        max-width: 620px;
-        margin: 0 auto;
-    }
+	.text {
+	    width: 100%;
+	    max-width: 1000px;
+	    margin: 0 auto;
+	    padding: 0;
+	}
 
-    .leagueData {
+	.text :global(h1) {
+    	font-family: Arial, Helvetica, sans-serif;
+    	font-size: 4rem;
+    	line-height: 1.05;
+    	font-weight: 700;
+    	letter-spacing: -0.04em;
+    	margin: 20px 0 35px;
+	}
+
+	.text :global(h2) {
+	    font-family: Arial, Helvetica, sans-serif;
+	    font-size: 2.6rem;
+	    line-height: 1.1;
+	    font-weight: 700;
+	    letter-spacing: -0.025em;
+	    margin: 60px 0 25px;
+	}
+
+	.text :global(h3) {
+	    font-family: Arial, Helvetica, sans-serif;
+    	font-size: 1.8rem;
+	    line-height: 1.2;
+	    font-weight: 600;
+	    margin: 25px 0 35px;
+	}
+
+	.text :global(p) {
+    	font-family: Arial, Helvetica, sans-serif;
+    	font-size: 1.08rem;
+	    line-height: 1.7;
+	    font-weight: 400;
+	    margin: 0 0 22px;
+	}
+    
+	.leagueData {
         position: relative;
         z-index: 1;
         width: 100%;
@@ -50,6 +85,22 @@
             width: 100%;
 		    box-shadow: none;
         }
+		#main {
+	    	padding: 40px 24px;
+		}
+
+		.text :global(h1) {
+	    	font-size: 3rem;
+		}
+
+		.text :global(h2) {
+		    font-size: 2.1rem;
+		}
+
+		.text :global(h3) {
+	    	font-size: 1.5rem;
+		}
+
         #home {
             flex-wrap: wrap;
         }
@@ -65,9 +116,14 @@
         text-align: center;
     }
 
-    h6 {
-        text-align: center;
-    }
+	h6 {
+    	text-align: center;
+	    font-family: Arial, Helvetica, sans-serif;
+	    font-size: 0.95rem;
+	    font-weight: 700;
+	    letter-spacing: 0.08em;
+	    margin: 0 0 55px;
+	}
 
     .homeBanner {
         background-color: var(--blueOne);
