@@ -43,6 +43,515 @@
 
     /*
         ==================================================
+        COMPACT LEDGER ENTRY
+        ==================================================
+
+        The full fact engine has a lot of useful internal
+        bookkeeping.
+
+        Groq does not need all of it.
+
+        It DOES need:
+          - exact date
+          - exact winner
+          - exact score
+          - exact series state before
+          - exact series state after
+
+        This is enough to discuss historical evolution
+        without ever doing arithmetic.
+    */
+
+    const compactLedger =
+        ledger => {
+
+        if (
+            !Array.isArray(
+                ledger
+            )
+        ) {
+            return [];
+        }
+
+
+        return ledger.map(
+            entry => ({
+                meetingNumber:
+                    entry.meetingNumber,
+
+                label:
+                    entry.label,
+
+                type:
+                    entry.type,
+
+                winner:
+                    entry.winner,
+
+                tie:
+                    entry.tie,
+
+                score:
+                    entry.score,
+
+                margin:
+                    entry.margin,
+
+                seriesBefore:
+                    entry.seriesBefore,
+
+                seriesAfter:
+                    entry.seriesAfter
+            })
+        );
+    };
+
+
+    /*
+        ==================================================
+        COMPACT STREAK
+        ==================================================
+    */
+
+    const compactCurrentStreak =
+        streak => {
+
+        if (!streak) {
+            return null;
+        }
+
+
+        if (
+            streak.type ===
+                'tie'
+        ) {
+            return {
+                type:
+                    'tie',
+
+                statement:
+                    streak.statement ||
+                    null
+            };
+        }
+
+
+        return {
+            manager:
+                streak.manager,
+
+            length:
+                streak.length,
+
+            began:
+                streak.began,
+
+            mostRecent:
+                streak.mostRecent,
+
+            firstWinInStreak:
+                streak.firstWinInStreak,
+
+            mostRecentWinInStreak:
+                streak.mostRecentWinInStreak,
+
+            recordImmediatelyBeforeStreak:
+                streak.recordImmediatelyBeforeStreakText,
+
+            currentRecord:
+                streak.currentRecordText,
+
+            verifiedEffect:
+                streak.verifiedEffect
+        };
+    };
+
+
+    /*
+        ==================================================
+        COMPACT LONGEST STREAK
+        ==================================================
+    */
+
+    const compactLongest =
+        streak => {
+
+        if (!streak) {
+            return null;
+        }
+
+
+        return {
+            manager:
+                streak.manager,
+
+            length:
+                streak.length,
+
+            start:
+                streak.start,
+
+            end:
+                streak.end,
+
+            firstGame:
+                streak.firstGame ||
+                null,
+
+            lastGame:
+                streak.lastGame ||
+                null
+        };
+    };
+
+
+    /*
+        ==================================================
+        RECENT WINDOW
+        ==================================================
+
+        We only need the verified record plus the exact
+        meetings for the shorter windows.
+
+        The last-10 raw list is redundant with the main
+        chronological ledger, so it is omitted.
+    */
+
+    const compactRecentWindow =
+        (
+            window,
+            includeGames = false
+        ) => {
+
+        if (!window) {
+            return null;
+        }
+
+
+        const result = {
+            actualGames:
+                window.actualGames,
+
+            record:
+                window.recordText
+        };
+
+
+        if (
+            includeGames &&
+            Array.isArray(
+                window.meetings
+            )
+        ) {
+            result.meetings =
+                window.meetings;
+        }
+
+
+        return result;
+    };
+
+
+    /*
+        ==================================================
+        SEASON HISTORY
+        ==================================================
+
+        The full structure repeats every game's details.
+
+        Those exact games already live in the ledger, so
+        here Groq only needs the season summary.
+    */
+
+    const compactSeasons =
+        seasons => {
+
+        if (
+            !Array.isArray(
+                seasons
+            )
+        ) {
+            return [];
+        }
+
+
+        return seasons.map(
+            season => ({
+                year:
+                    season.year,
+
+                meetings:
+                    season.meetings,
+
+                record:
+                    season.recordText,
+
+                result:
+                    season.result
+            })
+        );
+    };
+
+
+    /*
+        ==================================================
+        BUILD WRITER DOSSIER
+        ==================================================
+
+        This is the important change.
+
+        buildRivalryFactSheet() can remain enormous and rich.
+
+        But we transmit ONE non-redundant representation
+        of the useful facts to Groq.
+    */
+
+    const buildWriterDossier =
+        factSheet => {
+
+        const managerOne =
+            factSheet
+                ?.managers
+                ?.managerOne;
+
+        const managerTwo =
+            factSheet
+                ?.managers
+                ?.managerTwo;
+
+
+        return {
+            /*
+                ==========================================
+                BASIC IDENTITY
+                ==========================================
+            */
+
+            managers:
+                factSheet.managers,
+
+
+            /*
+                ==========================================
+                CURRENT SERIES
+                ==========================================
+            */
+
+            meetingCounts:
+                factSheet.meetingCounts,
+
+            currentRecords:
+                factSheet.currentRecords,
+
+            firstAndMostRecent:
+                factSheet.firstAndMostRecent,
+
+
+            /*
+                ==========================================
+                STREAKS
+                ==========================================
+            */
+
+            streaks: {
+                regularSeason: {
+                    current:
+                        compactCurrentStreak(
+                            factSheet
+                                ?.streaks
+                                ?.regularSeason
+                                ?.current
+                        ),
+
+                    longest: {
+                        [managerOne]:
+                            compactLongest(
+                                factSheet
+                                    ?.streaks
+                                    ?.regularSeason
+                                    ?.longestByManager
+                                    ?.[managerOne]
+                            ),
+
+                        [managerTwo]:
+                            compactLongest(
+                                factSheet
+                                    ?.streaks
+                                    ?.regularSeason
+                                    ?.longestByManager
+                                    ?.[managerTwo]
+                            )
+                    }
+                },
+
+
+                playoffs: {
+                    current:
+                        compactCurrentStreak(
+                            factSheet
+                                ?.streaks
+                                ?.playoffs
+                                ?.current
+                        ),
+
+                    longest: {
+                        [managerOne]:
+                            compactLongest(
+                                factSheet
+                                    ?.streaks
+                                    ?.playoffs
+                                    ?.longestByManager
+                                    ?.[managerOne]
+                            ),
+
+                        [managerTwo]:
+                            compactLongest(
+                                factSheet
+                                    ?.streaks
+                                    ?.playoffs
+                                    ?.longestByManager
+                                    ?.[managerTwo]
+                            )
+                    }
+                }
+            },
+
+
+            /*
+                ==========================================
+                RECENT HISTORY
+                ==========================================
+            */
+
+            recentRegularSeason: {
+                last3:
+                    compactRecentWindow(
+                        factSheet
+                            ?.recentRegularSeason
+                            ?.last3,
+                        true
+                    ),
+
+                last5:
+                    compactRecentWindow(
+                        factSheet
+                            ?.recentRegularSeason
+                            ?.last5,
+                        true
+                    ),
+
+                last10:
+                    compactRecentWindow(
+                        factSheet
+                            ?.recentRegularSeason
+                            ?.last10,
+                        false
+                    )
+            },
+
+
+            /*
+                ==========================================
+                SCORING
+                ==========================================
+            */
+
+            scoring:
+                factSheet.scoring,
+
+
+            /*
+                ==========================================
+                SEASON-BY-SEASON SUMMARY
+                ==========================================
+            */
+
+            seasonBySeason: {
+                regularSeason:
+                    compactSeasons(
+                        factSheet
+                            ?.seasonBySeason
+                            ?.regularSeason
+                    ),
+
+                playoffs:
+                    compactSeasons(
+                        factSheet
+                            ?.seasonBySeason
+                            ?.playoffs
+                    )
+            },
+
+
+            /*
+                ==========================================
+                SERIES LEAD CHANGES
+                ==========================================
+            */
+
+            seriesLeadHistory:
+                factSheet.seriesLeadHistory,
+
+
+            /*
+                ==========================================
+                EXACT HISTORICAL LEDGER
+
+                ONE regular-season copy.
+                ONE playoff copy.
+
+                No combined duplicate.
+                ==========================================
+            */
+
+            chronology: {
+                explanation:
+                    (
+                        'These are chronological MEETINGS. ' +
+                        'Adjacent entries are not necessarily adjacent NFL weeks. ' +
+                        'seriesBefore and seriesAfter are authoritative.'
+                    ),
+
+                regularSeason:
+                    compactLedger(
+                        factSheet
+                            ?.chronology
+                            ?.regularSeasonLedger
+                    ),
+
+                playoffs:
+                    compactLedger(
+                        factSheet
+                            ?.chronology
+                            ?.playoffLedger
+                    )
+            },
+
+
+            /*
+                ==========================================
+                TRADES
+                ==========================================
+            */
+
+            trades:
+                factSheet.trades,
+
+
+            /*
+                ==========================================
+                CAREER CONTEXT
+                ==========================================
+            */
+
+            overallCareerContext:
+                factSheet.overallCareerContext
+        };
+    };
+
+
+    /*
+        ==================================================
         PAYLOAD
         ==================================================
     */
@@ -59,7 +568,10 @@
             );
 
 
-        const factSheet =
+        /*
+            Build the COMPLETE historical analysis first.
+        */
+        const fullFactSheet =
             buildRivalryFactSheet({
                 rivalry,
 
@@ -76,13 +588,13 @@
 
 
         /*
-            The fact sheet is now the authoritative source.
-
-            We intentionally do NOT send a second competing
-            representation of the same wins/losses/streaks.
-            That reduces opportunities for the writer to mix
-            different meanings together.
+            Then distill it for the writer.
         */
+        const writerDossier =
+            buildWriterDossier(
+                fullFactSheet
+            );
+
 
         return {
             managerOne:
@@ -91,8 +603,85 @@
             managerTwo:
                 managerTwoName,
 
-            factSheet
+            factSheet:
+                writerDossier
         };
+    };
+
+
+    /*
+        ==================================================
+        READ ERROR RESPONSE
+        ==================================================
+
+        If Vercel/Groq ever returns HTML/plain text instead
+        of JSON, do not hide the HTTP status anymore.
+    */
+
+    const readResponse =
+        async response => {
+
+        const text =
+            await response.text();
+
+
+        let result =
+            null;
+
+
+        try {
+            result =
+                JSON.parse(
+                    text
+                );
+        }
+        catch {
+            result =
+                null;
+        }
+
+
+        if (!response.ok) {
+            const suppliedError =
+                result?.error;
+
+
+            if (suppliedError) {
+                throw new Error(
+                    `${response.status}: ${suppliedError}`
+                );
+            }
+
+
+            const shortText =
+                text
+                    ?.trim()
+                    ?.slice(
+                        0,
+                        300
+                    );
+
+
+            throw new Error(
+                shortText
+                    ? (
+                        `${response.status}: ${shortText}`
+                    )
+                    : (
+                        `HTTP ${response.status}`
+                    )
+            );
+        }
+
+
+        if (!result) {
+            throw new Error(
+                'The writer returned an unreadable response.'
+            );
+        }
+
+
+        return result;
     };
 
 
@@ -123,11 +712,11 @@
 
 
         /*
-            Initial automatic generation clears the prior
-            article because the selected rivalry changed.
+            Preserve the existing article while generating
+            Another Take.
 
-            "Another Take" leaves the old article visible
-            until the new one is ready.
+            Clear it only when we are automatically loading
+            a newly selected rivalry.
         */
         if (automatic) {
             article =
@@ -142,6 +731,10 @@
 
 
         try {
+            const payload =
+                buildPayload();
+
+
             const response =
                 await fetch(
                     '/api/ai/rivalry',
@@ -156,22 +749,16 @@
 
                         body:
                             JSON.stringify(
-                                buildPayload()
+                                payload
                             )
                     }
                 );
 
 
             const result =
-                await response.json();
-
-
-            if (!response.ok) {
-                throw new Error(
-                    result?.error ||
-                    'Unable to generate a rivalry column.'
+                await readResponse(
+                    response
                 );
-            }
 
 
             if (
@@ -227,12 +814,6 @@
         ==================================================
         AUTOMATIC GENERATION KEY
         ==================================================
-
-        Include point totals as well as game counts.
-
-        That way a newly completed game can trigger a fresh
-        article even if Sleeper had already created the matchup
-        shell beforehand.
     */
 
     $: regularPointsOne =
@@ -304,297 +885,135 @@
 <style>
     .aiWriter {
         display: block;
-
-        width:
-            97%;
-
-        max-width:
-            1000px;
-
-        min-height:
-            0;
-
-        height:
-            auto;
-
-        max-height:
-            none;
-
-        overflow:
-            visible;
-
-        box-sizing:
-            border-box;
-
-        margin:
-            2em auto;
-
-        padding:
-            2em;
-
-        border-radius:
-            20px;
-
-        border:
-            1px solid var(--aaa);
-
-        background-color:
-            var(--rivalryBack);
+        width: 97%;
+        max-width: 1000px;
+        min-height: 0;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        box-sizing: border-box;
+        margin: 2em auto;
+        padding: 2em;
+        border-radius: 20px;
+        border: 1px solid var(--aaa);
+        background-color: var(--rivalryBack);
     }
 
 
     h3 {
-        text-align:
-            center;
-
-        font-size:
-            1.9em;
-
-        margin:
-            0 0 0.35em;
+        text-align: center;
+        font-size: 1.9em;
+        margin: 0 0 0.35em;
     }
 
 
     .intro {
-        max-width:
-            650px;
-
-        height:
-            auto;
-
-        max-height:
-            none;
-
-        overflow:
-            visible;
-
-        margin:
-            0 auto 1.5em;
-
-        text-align:
-            center;
-
-        color:
-            #888;
-
-        font-size:
-            0.9em;
+        max-width: 650px;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        margin: 0 auto 1.5em;
+        text-align: center;
+        color: #888;
+        font-size: 0.9em;
     }
 
 
     .writing {
-        width:
-            85%;
-
-        max-width:
-            550px;
-
-        height:
-            auto;
-
-        margin:
-            2em auto;
-
-        text-align:
-            center;
-
-        color:
-            #888;
-
-        font-style:
-            italic;
+        width: 85%;
+        max-width: 550px;
+        height: auto;
+        margin: 2em auto;
+        text-align: center;
+        color: #888;
+        font-style: italic;
     }
 
 
     .article {
-        display:
-            block;
-
-        width:
-            100%;
-
-        max-width:
-            800px;
-
-        min-height:
-            0;
-
-        height:
-            auto;
-
-        max-height:
-            none;
-
-        overflow:
-            visible;
-
-        box-sizing:
-            border-box;
-
-        margin:
-            2em auto 0;
-
-        padding:
-            0 0.25em;
-
-        line-height:
-            1.7;
-
-        white-space:
-            normal;
+        display: block;
+        width: 100%;
+        max-width: 800px;
+        min-height: 0;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        box-sizing: border-box;
+        margin: 2em auto 0;
+        padding: 0 0.25em;
+        line-height: 1.7;
+        white-space: normal;
     }
 
 
     .headline {
-        display:
-            block;
-
-        width:
-            100%;
-
-        height:
-            auto;
-
-        max-height:
-            none;
-
-        overflow:
-            visible;
-
-        box-sizing:
-            border-box;
-
-        font-size:
-            1.5em;
-
-        font-weight:
-            650;
-
-        line-height:
-            1.3;
-
-        margin:
-            0 0 1.3em;
-
-        text-align:
-            center;
-
-        white-space:
-            normal;
-
-        overflow-wrap:
-            anywhere;
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        box-sizing: border-box;
+        font-size: 1.5em;
+        font-weight: 650;
+        line-height: 1.3;
+        margin: 0 0 1.3em;
+        text-align: center;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
 
     .paragraph {
-        display:
-            block;
-
-        width:
-            100%;
-
-        min-height:
-            0;
-
-        height:
-            auto;
-
-        max-height:
-            none;
-
-        overflow:
-            visible;
-
-        box-sizing:
-            border-box;
-
-        margin:
-            0 0 1.25em;
-
-        white-space:
-            normal;
-
-        overflow-wrap:
-            break-word;
+        display: block;
+        width: 100%;
+        min-height: 0;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        box-sizing: border-box;
+        margin: 0 0 1.25em;
+        white-space: normal;
+        overflow-wrap: break-word;
     }
 
 
     .paragraph:last-child {
-        margin-bottom:
-            0;
+        margin-bottom: 0;
     }
 
 
     .byline {
-        display:
-            block;
-
-        height:
-            auto;
-
-        max-height:
-            none;
-
-        overflow:
-            visible;
-
-        margin-top:
-            1.75em;
-
-        text-align:
-            center;
-
-        font-size:
-            0.75em;
-
-        color:
-            #999;
+        display: block;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        margin-top: 1.75em;
+        text-align: center;
+        font-size: 0.75em;
+        color: #999;
     }
 
 
     .buttonHolder {
-        display:
-            block;
-
-        height:
-            auto;
-
-        margin-top:
-            1.75em;
-
-        text-align:
-            center;
+        display: block;
+        height: auto;
+        margin-top: 1.75em;
+        text-align: center;
     }
 
 
     button {
-        border:
-            1px solid #888;
-
-        border-radius:
-            6px;
-
-        background:
-            transparent;
-
-        color:
-            inherit;
-
-        font:
-            inherit;
-
-        padding:
-            0.65em 1.4em;
-
-        cursor:
-            pointer;
+        border: 1px solid #888;
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        padding: 0.65em 1.4em;
+        cursor: pointer;
     }
 
 
-    button:hover:not(
-        :disabled
-    ) {
+    button:hover:not(:disabled) {
         background-color:
             rgba(
                 127,
@@ -606,35 +1025,19 @@
 
 
     button:disabled {
-        opacity:
-            0.55;
-
-        cursor:
-            default;
+        opacity: 0.55;
+        cursor: default;
     }
 
 
     .error {
-        display:
-            block;
-
-        height:
-            auto;
-
-        max-height:
-            none;
-
-        overflow:
-            visible;
-
-        text-align:
-            center;
-
-        margin:
-            1.5em auto 0;
-
-        color:
-            #c55;
+        display: block;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        text-align: center;
+        margin: 1.5em auto 0;
+        color: #c55;
     }
 
 
@@ -642,32 +1045,24 @@
         max-width: 650px
     ) {
         .aiWriter {
-            width:
-                97%;
-
-            padding:
-                1.5em 1em;
+            width: 97%;
+            padding: 1.5em 1em;
         }
 
 
         h3 {
-            font-size:
-                1.6em;
+            font-size: 1.6em;
         }
 
 
         .article {
-            width:
-                100%;
-
-            padding:
-                0;
+            width: 100%;
+            padding: 0;
         }
 
 
         .headline {
-            font-size:
-                1.3em;
+            font-size: 1.3em;
         }
     }
 </style>
