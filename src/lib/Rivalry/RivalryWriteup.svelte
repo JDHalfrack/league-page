@@ -9,15 +9,10 @@
 
 
     let generating = false;
-
     let article = null;
-
     let model = '';
-
     let writer = '';
-
     let error = '';
-
     let lastAutoKey = '';
 
 
@@ -43,7 +38,7 @@
 
     /*
         ==================================================
-        SCORE A MATCHUP
+        SCORE ONE SIDE
         ==================================================
     */
 
@@ -71,11 +66,10 @@
 
     /*
         ==================================================
-        TURN RAW MATCHUPS INTO SIMPLE GAMES
+        SIMPLIFY MATCHUPS
 
-        Defense-in-depth:
-        0-0 games are removed even though
-        rivalryMatchups.js now removes them too.
+        0-0 games are discarded here as an extra layer
+        of protection.
         ==================================================
     */
 
@@ -149,11 +143,11 @@
 
                     winner:
                         managerOneScore >
-                        managerTwoScore
+                            managerTwoScore
                             ? 'managerOne'
                             : (
                                 managerTwoScore >
-                                managerOneScore
+                                    managerOneScore
                                     ? 'managerTwo'
                                     : 'tie'
                             )
@@ -187,17 +181,20 @@
 
         const wins =
             Number(
-                record.wins || 0
+                record.wins ||
+                0
             );
 
         const losses =
             Number(
-                record.losses || 0
+                record.losses ||
+                0
             );
 
         const ties =
             Number(
-                record.ties || 0
+                record.ties ||
+                0
             );
 
         const games =
@@ -208,8 +205,11 @@
 
         return {
             wins,
+
             losses,
+
             ties,
+
             games,
 
             winPercentage:
@@ -253,6 +253,7 @@
             return null;
         }
 
+
         if (
             game.playoffRound
         ) {
@@ -261,6 +262,7 @@
                 `${game.playoffRound}`
             );
         }
+
 
         return (
             `${game.year} ` +
@@ -277,16 +279,22 @@
 
     const average = values => {
         if (
-            !Array.isArray(values) ||
+            !Array.isArray(
+                values
+            ) ||
             !values.length
         ) {
             return null;
         }
 
+
         return Number(
             (
                 values.reduce(
-                    (total, value) =>
+                    (
+                        total,
+                        value
+                    ) =>
                         total +
                         value,
                     0
@@ -299,7 +307,7 @@
 
     /*
         ==================================================
-        RECORD FROM GAMES
+        RECORD
         ==================================================
     */
 
@@ -310,19 +318,20 @@
         let two = 0;
         let ties = 0;
 
+
         for (
             const game
             of games
         ) {
             if (
                 game.winner ===
-                'managerOne'
+                    'managerOne'
             ) {
                 one++;
             }
             else if (
                 game.winner ===
-                'managerTwo'
+                    'managerTwo'
             ) {
                 two++;
             }
@@ -330,6 +339,7 @@
                 ties++;
             }
         }
+
 
         return {
             managerOne:
@@ -345,9 +355,9 @@
 
     /*
         ==================================================
-        CURRENT STREAK
+        CURRENT REGULAR-SEASON STREAK
 
-        Incoming games are newest -> oldest.
+        Games are newest -> oldest.
         ==================================================
     */
 
@@ -367,7 +377,7 @@
 
         if (
             winner ===
-            'tie'
+                'tie'
         ) {
             return {
                 type:
@@ -388,7 +398,7 @@
         ) {
             if (
                 game.winner !==
-                winner
+                    winner
             ) {
                 break;
             }
@@ -422,16 +432,12 @@
         }
 
 
-        const sorted =
-            [...games]
-                .sort(
-                    (a, b) =>
-                        a.margin -
-                        b.margin
-                );
-
-
-        return sorted[0];
+        return [...games]
+            .sort(
+                (a, b) =>
+                    a.margin -
+                    b.margin
+            )[0];
     };
 
 
@@ -451,22 +457,18 @@
         }
 
 
-        const sorted =
-            [...games]
-                .sort(
-                    (a, b) =>
-                        b.margin -
-                        a.margin
-                );
-
-
-        return sorted[0];
+        return [...games]
+            .sort(
+                (a, b) =>
+                    b.margin -
+                    a.margin
+            )[0];
     };
 
 
     /*
         ==================================================
-        NEWEST / OLDEST
+        CHRONOLOGICAL SORT
         ==================================================
     */
 
@@ -488,7 +490,7 @@
 
     /*
         ==================================================
-        TURN A GAME INTO A FACT-SHEET OBJECT
+        DETAILED GAME
         ==================================================
     */
 
@@ -532,13 +534,7 @@
 
     /*
         ==================================================
-        BUILD FACT SHEET
-
-        This is the analytical layer.
-
-        The AI receives conclusions that the APPLICATION
-        has already calculated instead of being asked
-        to discover them itself.
+        FACT SHEET
         ==================================================
     */
 
@@ -617,23 +613,25 @@
             );
 
 
-        let streakFact = null;
+        let streakFact =
+            null;
 
 
         if (currentStreak) {
             if (
                 currentStreak.type ===
-                'tie'
+                    'tie'
             ) {
                 streakFact =
-                    'Most recent regular-season meeting was a tie.';
+                    'The most recent regular-season meeting was a tie.';
             }
             else {
                 const streakName =
                     currentStreak.manager ===
-                    'managerOne'
+                        'managerOne'
                         ? managerOneName
                         : managerTwoName;
+
 
                 streakFact =
                     `${streakName} has won the last ${currentStreak.length} regular-season meeting${currentStreak.length === 1 ? '' : 's'}.`;
@@ -703,10 +701,12 @@
 
                 record: {
                     [managerOneName]:
-                        regularRecord.managerOne,
+                        regularRecord
+                            .managerOne,
 
                     [managerTwoName]:
-                        regularRecord.managerTwo,
+                        regularRecord
+                            .managerTwo,
 
                     ties:
                         regularRecord.ties
@@ -773,13 +773,16 @@
 
                 record: {
                     [managerOneName]:
-                        playoffRecord.managerOne,
+                        playoffRecord
+                            .managerOne,
 
                     [managerTwoName]:
-                        playoffRecord.managerTwo,
+                        playoffRecord
+                            .managerTwo,
 
                     ties:
-                        playoffRecord.ties
+                        playoffRecord
+                            .ties
                 },
 
                 games:
@@ -792,13 +795,16 @@
             allMeaningfulMeetings: {
                 record: {
                     [managerOneName]:
-                        allRecord.managerOne,
+                        allRecord
+                            .managerOne,
 
                     [managerTwoName]:
-                        allRecord.managerTwo,
+                        allRecord
+                            .managerTwo,
 
                     ties:
-                        allRecord.ties
+                        allRecord
+                            .ties
                 },
 
                 closestGame:
@@ -837,7 +843,7 @@
 
     /*
         ==================================================
-        BUILD REQUEST PAYLOAD
+        REQUEST PAYLOAD
         ==================================================
     */
 
@@ -869,14 +875,6 @@
             );
 
 
-        /*
-            Recalculate everything from the filtered
-            played-game arrays.
-
-            That guarantees a 0-0 game can never leak
-            into the article even if some other code
-            accidentally supplies one later.
-        */
         const regularRecord =
             recordFromGames(
                 regularGames
@@ -919,7 +917,8 @@
                 },
 
                 ties:
-                    regularRecord.ties,
+                    regularRecord
+                        .ties,
 
                 totalPoints: {
                     managerOne:
@@ -978,7 +977,8 @@
                 },
 
                 ties:
-                    playoffRecord.ties,
+                    playoffRecord
+                        .ties,
 
                 totalPoints: {
                     managerOne:
@@ -1053,7 +1053,7 @@
 
     /*
         ==================================================
-        GENERATE ARTICLE
+        GENERATE
         ==================================================
     */
 
@@ -1071,17 +1071,17 @@
 
 
         generating = true;
-
         error = '';
 
 
-        if (!automatic) {
-            /*
-                Keep the previous article visible while
-                Another Take is being written.
-            */
-        }
-        else {
+        /*
+            On the initial automatic generation there
+            isn't an old article to preserve.
+
+            For Another Take, leave the current article
+            visible until its replacement is ready.
+        */
+        if (automatic) {
             article = null;
             model = '';
             writer = '';
@@ -1116,13 +1116,14 @@
             if (!response.ok) {
                 throw new Error(
                     result?.error ||
-                    'Unable to generate a write-up.'
+                    'Unable to generate a rivalry column.'
                 );
             }
 
 
             if (
-                !result?.article
+                !result
+                    ?.article
                     ?.headline ||
                 !Array.isArray(
                     result
@@ -1136,8 +1137,25 @@
             }
 
 
-            article =
-                result.article;
+            /*
+                IMPORTANT:
+                Store ALL returned paragraphs.
+
+                No slicing.
+                No maximum article length.
+            */
+            article = {
+                headline:
+                    result
+                        .article
+                        .headline,
+
+                paragraphs:
+                    result
+                        .article
+                        .paragraphs
+            };
+
 
             model =
                 result.model ||
@@ -1150,20 +1168,18 @@
         catch (err) {
             error =
                 err?.message ||
-                'Unable to generate a write-up.';
+                'Unable to generate a rivalry column.';
         }
         finally {
-            generating = false;
+            generating =
+                false;
         }
     }
 
 
     /*
         ==================================================
-        AUTO-GENERATE
-
-        Generate exactly once each time the selected
-        manager pair/rivalry changes.
+        AUTOMATIC FIRST ARTICLE
         ==================================================
     */
 
@@ -1184,7 +1200,8 @@
 
     $: if (
         autoKey &&
-        autoKey !== lastAutoKey
+        autoKey !==
+            lastAutoKey
     ) {
         lastAutoKey =
             autoKey;
@@ -1197,65 +1214,327 @@
 
 
 <style>
+    /*
+        ==================================================
+        OUTER ARTICLE CARD
+
+        Explicitly dynamic height.
+
+        Nothing in this component may clip the article.
+        ==================================================
+    */
+
     .aiWriter {
-        width: 97%;
-        max-width: 1000px;
-        margin: 2em auto;
-        box-sizing: border-box;
-        border-radius: 20px;
+        display: block;
+
+        width:
+            97%;
+
+        max-width:
+            1000px;
+
+        min-height:
+            0;
+
+        height:
+            auto;
+
+        max-height:
+            none;
+
+        overflow:
+            visible;
+
+        box-sizing:
+            border-box;
+
+        margin:
+            2em auto;
+
+        padding:
+            2em;
+
+        border-radius:
+            20px;
+
         border:
             1px solid var(--aaa);
+
         background-color:
             var(--rivalryBack);
-        padding: 2em;
     }
 
+
     h3 {
-        text-align: center;
-        font-size: 1.9em;
+        text-align:
+            center;
+
+        font-size:
+            1.9em;
+
         margin:
             0 0 0.35em;
     }
 
+
     .intro {
-        max-width: 650px;
+        max-width:
+            650px;
+
+        height:
+            auto;
+
+        max-height:
+            none;
+
+        overflow:
+            visible;
+
         margin:
             0 auto 1.5em;
-        text-align: center;
-        color: #888;
-        font-size: 0.9em;
+
+        text-align:
+            center;
+
+        color:
+            #888;
+
+        font-size:
+            0.9em;
     }
+
+
+    /*
+        ==================================================
+        INITIAL GENERATION MESSAGE
+        ==================================================
+    */
 
     .writing {
-        width: 85%;
-        max-width: 550px;
+        width:
+            85%;
+
+        max-width:
+            550px;
+
+        height:
+            auto;
+
         margin:
             2em auto;
-        text-align: center;
-        color: #888;
-        font-style: italic;
+
+        text-align:
+            center;
+
+        color:
+            #888;
+
+        font-style:
+            italic;
     }
 
-    .buttonHolder {
-        text-align: center;
-        margin-top: 1.75em;
+
+    /*
+        ==================================================
+        ARTICLE
+
+        No fixed height.
+        No max-height.
+        No overflow clipping.
+        ==================================================
+    */
+
+    .article {
+        display:
+            block;
+
+        width:
+            100%;
+
+        max-width:
+            800px;
+
+        min-height:
+            0;
+
+        height:
+            auto;
+
+        max-height:
+            none;
+
+        overflow:
+            visible;
+
+        box-sizing:
+            border-box;
+
+        margin:
+            2em auto 0;
+
+        padding:
+            0 0.25em;
+
+        line-height:
+            1.7;
+
+        white-space:
+            normal;
     }
+
+
+    .headline {
+        display:
+            block;
+
+        width:
+            100%;
+
+        height:
+            auto;
+
+        max-height:
+            none;
+
+        overflow:
+            visible;
+
+        box-sizing:
+            border-box;
+
+        font-size:
+            1.5em;
+
+        font-weight:
+            650;
+
+        line-height:
+            1.3;
+
+        margin:
+            0 0 1.3em;
+
+        text-align:
+            center;
+
+        white-space:
+            normal;
+
+        overflow-wrap:
+            anywhere;
+    }
+
+
+    .paragraph {
+        display:
+            block;
+
+        width:
+            100%;
+
+        min-height:
+            0;
+
+        height:
+            auto;
+
+        max-height:
+            none;
+
+        overflow:
+            visible;
+
+        box-sizing:
+            border-box;
+
+        margin:
+            0 0 1.25em;
+
+        white-space:
+            normal;
+
+        overflow-wrap:
+            break-word;
+    }
+
+
+    .paragraph:last-child {
+        margin-bottom:
+            0;
+    }
+
+
+    .byline {
+        display:
+            block;
+
+        height:
+            auto;
+
+        max-height:
+            none;
+
+        overflow:
+            visible;
+
+        margin-top:
+            1.75em;
+
+        text-align:
+            center;
+
+        font-size:
+            0.75em;
+
+        color:
+            #999;
+    }
+
+
+    /*
+        ==================================================
+        BUTTON
+        ==================================================
+    */
+
+    .buttonHolder {
+        display:
+            block;
+
+        height:
+            auto;
+
+        margin-top:
+            1.75em;
+
+        text-align:
+            center;
+    }
+
 
     button {
         border:
             1px solid #888;
-        border-radius: 6px;
+
+        border-radius:
+            6px;
+
         background:
             transparent;
+
         color:
             inherit;
+
         font:
             inherit;
+
         padding:
             0.65em 1.4em;
+
         cursor:
             pointer;
     }
+
 
     button:hover:not(
         :disabled
@@ -1269,44 +1548,43 @@
             );
     }
 
+
     button:disabled {
-        opacity: 0.55;
-        cursor: default;
+        opacity:
+            0.55;
+
+        cursor:
+            default;
     }
 
-    .article {
-        max-width: 760px;
-        margin:
-            2em auto 0;
-        line-height: 1.65;
-    }
 
-    .headline {
-        font-size: 1.45em;
-        font-weight: 650;
-        line-height: 1.25;
-        margin:
-            0 0 1.2em;
-        text-align: center;
-    }
-
-    .paragraph {
-        margin:
-            1em 0;
-    }
-
-    .byline {
-        margin-top: 1.75em;
-        text-align: center;
-        font-size: 0.75em;
-        color: #999;
-    }
+    /*
+        ==================================================
+        ERROR
+        ==================================================
+    */
 
     .error {
-        text-align: center;
+        display:
+            block;
+
+        height:
+            auto;
+
+        max-height:
+            none;
+
+        overflow:
+            visible;
+
+        text-align:
+            center;
+
         margin:
             1.5em auto 0;
-        color: #c55;
+
+        color:
+            #c55;
     }
 
 
@@ -1314,18 +1592,32 @@
         max-width: 650px
     ) {
         .aiWriter {
+            width:
+                97%;
+
             padding:
                 1.5em 1em;
         }
+
 
         h3 {
             font-size:
                 1.6em;
         }
 
+
+        .article {
+            width:
+                100%;
+
+            padding:
+                0;
+        }
+
+
         .headline {
             font-size:
-                1.25em;
+                1.3em;
         }
     }
 </style>
