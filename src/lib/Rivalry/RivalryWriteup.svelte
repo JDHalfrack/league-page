@@ -7,10 +7,25 @@
     export let playerOneRecords = null;
     export let playerTwoRecords = null;
 
+
     let generating = false;
-    let writeup = '';
+
+    let article = null;
+
     let model = '';
+
+    let writer = '';
+
     let error = '';
+
+    let lastAutoKey = '';
+
+
+    /*
+        ==================================================
+        MANAGER NAME
+        ==================================================
+    */
 
     const getManagerName = id => {
         const user =
@@ -25,10 +40,19 @@
         );
     };
 
+
+    /*
+        ==================================================
+        SCORE A MATCHUP
+        ==================================================
+    */
+
     const scoreMatchup = side => {
         if (
             !side ||
-            !Array.isArray(side.points)
+            !Array.isArray(
+                side.points
+            )
         ) {
             return 0;
         }
@@ -36,53 +60,122 @@
         return side.points.reduce(
             (total, points) =>
                 total +
-                (Number(points) || 0),
+                (
+                    Number(points) ||
+                    0
+                ),
             0
         );
     };
+
+
+    /*
+        ==================================================
+        TURN RAW MATCHUPS INTO SIMPLE GAMES
+
+        Defense-in-depth:
+        0-0 games are removed even though
+        rivalryMatchups.js now removes them too.
+        ==================================================
+    */
 
     const summarizeMatchups =
         matchups => {
 
         if (
-            !Array.isArray(matchups)
+            !Array.isArray(
+                matchups
+            )
         ) {
             return [];
         }
 
-        return matchups.map(game => {
-            const sideOne =
-                game.matchup?.[0];
 
-            const sideTwo =
-                game.matchup?.[1];
+        return matchups
+            .map(game => {
+                const sideOne =
+                    game
+                        .matchup
+                        ?.[0];
 
-            return {
-                year:
-                    game.year,
+                const sideTwo =
+                    game
+                        .matchup
+                        ?.[1];
 
-                week:
-                    game.week,
 
-                playoffRound:
-                    game.label || null,
-
-                managerOneScore:
+                const managerOneScore =
                     Number(
                         scoreMatchup(
                             sideOne
                         ).toFixed(2)
-                    ),
+                    );
 
-                managerTwoScore:
+
+                const managerTwoScore =
                     Number(
                         scoreMatchup(
                             sideTwo
                         ).toFixed(2)
+                    );
+
+
+                return {
+                    year:
+                        Number(
+                            game.year
+                        ),
+
+                    week:
+                        Number(
+                            game.week
+                        ),
+
+                    playoffRound:
+                        game.label ||
+                        null,
+
+                    managerOneScore,
+
+                    managerTwoScore,
+
+                    margin:
+                        Number(
+                            Math.abs(
+                                managerOneScore -
+                                managerTwoScore
+                            ).toFixed(2)
+                        ),
+
+                    winner:
+                        managerOneScore >
+                        managerTwoScore
+                            ? 'managerOne'
+                            : (
+                                managerTwoScore >
+                                managerOneScore
+                                    ? 'managerTwo'
+                                    : 'tie'
+                            )
+                };
+            })
+            .filter(
+                game =>
+                    !(
+                        game.managerOneScore ===
+                            0 &&
+                        game.managerTwoScore ===
+                            0
                     )
-            };
-        });
+            );
     };
+
+
+    /*
+        ==================================================
+        PERFORMANCE
+        ==================================================
+    */
 
     const summarizePerformance =
         record => {
@@ -91,163 +184,840 @@
             return null;
         }
 
+
+        const wins =
+            Number(
+                record.wins || 0
+            );
+
+        const losses =
+            Number(
+                record.losses || 0
+            );
+
+        const ties =
+            Number(
+                record.ties || 0
+            );
+
         const games =
-            (record.wins || 0) +
-            (record.losses || 0) +
-            (record.ties || 0);
+            wins +
+            losses +
+            ties;
+
 
         return {
-            wins:
-                record.wins || 0,
+            wins,
+            losses,
+            ties,
+            games,
 
-            losses:
-                record.losses || 0,
-
-            ties:
-                record.ties || 0,
+            winPercentage:
+                games
+                    ? Number(
+                        (
+                            wins /
+                            games *
+                            100
+                        ).toFixed(1)
+                    )
+                    : null,
 
             fantasyPointsFor:
                 Number(
-                    (
+                    Number(
                         record.fptsFor ||
                         0
-                    ).toFixed?.(2) ??
-                    record.fptsFor ??
-                    0
+                    ).toFixed(2)
                 ),
 
             fantasyPointsAgainst:
                 Number(
-                    (
+                    Number(
                         record.fptsAgainst ||
                         0
-                    ).toFixed?.(2) ??
-                    record.fptsAgainst ??
-                    0
-                ),
-
-            games
+                    ).toFixed(2)
+                )
         };
     };
 
-    const buildPayload = () => {
+
+    /*
+        ==================================================
+        GAME LABEL
+        ==================================================
+    */
+
+    const gameLabel = game => {
+        if (!game) {
+            return null;
+        }
+
+        if (
+            game.playoffRound
+        ) {
+            return (
+                `${game.year} ` +
+                `${game.playoffRound}`
+            );
+        }
+
+        return (
+            `${game.year} ` +
+            `Week ${game.week}`
+        );
+    };
+
+
+    /*
+        ==================================================
+        AVERAGE
+        ==================================================
+    */
+
+    const average = values => {
+        if (
+            !Array.isArray(values) ||
+            !values.length
+        ) {
+            return null;
+        }
+
+        return Number(
+            (
+                values.reduce(
+                    (total, value) =>
+                        total +
+                        value,
+                    0
+                ) /
+                values.length
+            ).toFixed(2)
+        );
+    };
+
+
+    /*
+        ==================================================
+        RECORD FROM GAMES
+        ==================================================
+    */
+
+    const recordFromGames =
+        games => {
+
+        let one = 0;
+        let two = 0;
+        let ties = 0;
+
+        for (
+            const game
+            of games
+        ) {
+            if (
+                game.winner ===
+                'managerOne'
+            ) {
+                one++;
+            }
+            else if (
+                game.winner ===
+                'managerTwo'
+            ) {
+                two++;
+            }
+            else {
+                ties++;
+            }
+        }
+
         return {
             managerOne:
-                getManagerName(
-                    playerOne
-                ),
+                one,
 
             managerTwo:
-                getManagerName(
-                    playerTwo
+                two,
+
+            ties
+        };
+    };
+
+
+    /*
+        ==================================================
+        CURRENT STREAK
+
+        Incoming games are newest -> oldest.
+        ==================================================
+    */
+
+    const getCurrentStreak =
+        games => {
+
+        if (
+            !games.length
+        ) {
+            return null;
+        }
+
+
+        const winner =
+            games[0].winner;
+
+
+        if (
+            winner ===
+            'tie'
+        ) {
+            return {
+                type:
+                    'tie',
+
+                length:
+                    1
+            };
+        }
+
+
+        let length = 0;
+
+
+        for (
+            const game
+            of games
+        ) {
+            if (
+                game.winner !==
+                winner
+            ) {
+                break;
+            }
+
+            length++;
+        }
+
+
+        return {
+            manager:
+                winner,
+
+            length
+        };
+    };
+
+
+    /*
+        ==================================================
+        CLOSEST GAME
+        ==================================================
+    */
+
+    const getClosestGame =
+        games => {
+
+        if (
+            !games.length
+        ) {
+            return null;
+        }
+
+
+        const sorted =
+            [...games]
+                .sort(
+                    (a, b) =>
+                        a.margin -
+                        b.margin
+                );
+
+
+        return sorted[0];
+    };
+
+
+    /*
+        ==================================================
+        BIGGEST BLOWOUT
+        ==================================================
+    */
+
+    const getBiggestBlowout =
+        games => {
+
+        if (
+            !games.length
+        ) {
+            return null;
+        }
+
+
+        const sorted =
+            [...games]
+                .sort(
+                    (a, b) =>
+                        b.margin -
+                        a.margin
+                );
+
+
+        return sorted[0];
+    };
+
+
+    /*
+        ==================================================
+        NEWEST / OLDEST
+        ==================================================
+    */
+
+    const chronologicalSort =
+        games =>
+            [...games]
+                .sort(
+                    (a, b) =>
+                        (
+                            a.year -
+                            b.year
+                        ) ||
+                        (
+                            a.week -
+                            b.week
+                        )
+                );
+
+
+    /*
+        ==================================================
+        TURN A GAME INTO A FACT-SHEET OBJECT
+        ==================================================
+    */
+
+    const detailedGame =
+        game => {
+
+        if (!game) {
+            return null;
+        }
+
+
+        return {
+            label:
+                gameLabel(
+                    game
                 ),
 
+            year:
+                game.year,
+
+            week:
+                game.week,
+
+            playoffRound:
+                game.playoffRound,
+
+            managerOneScore:
+                game.managerOneScore,
+
+            managerTwoScore:
+                game.managerTwoScore,
+
+            margin:
+                game.margin,
+
+            winner:
+                game.winner
+        };
+    };
+
+
+    /*
+        ==================================================
+        BUILD FACT SHEET
+
+        This is the analytical layer.
+
+        The AI receives conclusions that the APPLICATION
+        has already calculated instead of being asked
+        to discover them itself.
+        ==================================================
+    */
+
+    const buildFactSheet = (
+        regularGames,
+        playoffGames
+    ) => {
+        const managerOneName =
+            getManagerName(
+                playerOne
+            );
+
+        const managerTwoName =
+            getManagerName(
+                playerTwo
+            );
+
+
+        const regularRecord =
+            recordFromGames(
+                regularGames
+            );
+
+
+        const playoffRecord =
+            recordFromGames(
+                playoffGames
+            );
+
+
+        const allGames =
+            [
+                ...regularGames,
+                ...playoffGames
+            ];
+
+
+        const allRecord =
+            recordFromGames(
+                allGames
+            );
+
+
+        const chronologicalRegular =
+            chronologicalSort(
+                regularGames
+            );
+
+
+        const firstRegular =
+            chronologicalRegular[0] ||
+            null;
+
+
+        const latestRegular =
+            regularGames[0] ||
+            null;
+
+
+        const recentFive =
+            regularGames.slice(
+                0,
+                5
+            );
+
+
+        const recentFiveRecord =
+            recordFromGames(
+                recentFive
+            );
+
+
+        const currentStreak =
+            getCurrentStreak(
+                regularGames
+            );
+
+
+        let streakFact = null;
+
+
+        if (currentStreak) {
+            if (
+                currentStreak.type ===
+                'tie'
+            ) {
+                streakFact =
+                    'Most recent regular-season meeting was a tie.';
+            }
+            else {
+                const streakName =
+                    currentStreak.manager ===
+                    'managerOne'
+                        ? managerOneName
+                        : managerTwoName;
+
+                streakFact =
+                    `${streakName} has won the last ${currentStreak.length} regular-season meeting${currentStreak.length === 1 ? '' : 's'}.`;
+            }
+        }
+
+
+        const regularAverageOne =
+            average(
+                regularGames.map(
+                    game =>
+                        game.managerOneScore
+                )
+            );
+
+
+        const regularAverageTwo =
+            average(
+                regularGames.map(
+                    game =>
+                        game.managerTwoScore
+                )
+            );
+
+
+        const closestRegular =
+            getClosestGame(
+                regularGames
+            );
+
+
+        const biggestRegular =
+            getBiggestBlowout(
+                regularGames
+            );
+
+
+        const closestOverall =
+            getClosestGame(
+                allGames
+            );
+
+
+        const biggestOverall =
+            getBiggestBlowout(
+                allGames
+            );
+
+
+        return {
+            managers: {
+                managerOne:
+                    managerOneName,
+
+                managerTwo:
+                    managerTwoName
+            },
+
+
+            totalMeaningfulMeetings:
+                allGames.length,
+
+
             regularSeason: {
+                meetings:
+                    regularGames.length,
+
+                record: {
+                    [managerOneName]:
+                        regularRecord.managerOne,
+
+                    [managerTwoName]:
+                        regularRecord.managerTwo,
+
+                    ties:
+                        regularRecord.ties
+                },
+
+                averageScore: {
+                    [managerOneName]:
+                        regularAverageOne,
+
+                    [managerTwoName]:
+                        regularAverageTwo
+                },
+
+                firstMeeting:
+                    detailedGame(
+                        firstRegular
+                    ),
+
+                mostRecentMeeting:
+                    detailedGame(
+                        latestRegular
+                    ),
+
+                closestGame:
+                    detailedGame(
+                        closestRegular
+                    ),
+
+                biggestBlowout:
+                    detailedGame(
+                        biggestRegular
+                    ),
+
+                currentStreak:
+                    streakFact,
+
+                lastFive: {
+                    gamesPlayed:
+                        recentFive.length,
+
+                    record: {
+                        [managerOneName]:
+                            recentFiveRecord
+                                .managerOne,
+
+                        [managerTwoName]:
+                            recentFiveRecord
+                                .managerTwo,
+
+                        ties:
+                            recentFiveRecord
+                                .ties
+                    }
+                }
+            },
+
+
+            playoffs: {
+                definition:
+                    'Championship/winners bracket only. Consolation games excluded.',
+
+                meetings:
+                    playoffGames.length,
+
+                record: {
+                    [managerOneName]:
+                        playoffRecord.managerOne,
+
+                    [managerTwoName]:
+                        playoffRecord.managerTwo,
+
+                    ties:
+                        playoffRecord.ties
+                },
+
+                games:
+                    playoffGames.map(
+                        detailedGame
+                    )
+            },
+
+
+            allMeaningfulMeetings: {
+                record: {
+                    [managerOneName]:
+                        allRecord.managerOne,
+
+                    [managerTwoName]:
+                        allRecord.managerTwo,
+
+                    ties:
+                        allRecord.ties
+                },
+
+                closestGame:
+                    detailedGame(
+                        closestOverall
+                    ),
+
+                biggestBlowout:
+                    detailedGame(
+                        biggestOverall
+                    )
+            },
+
+
+            tradeHistory: {
+                numberOfTrades:
+                    tradeHistory.length,
+
+                seasons:
+                    [
+                        ...new Set(
+                            tradeHistory
+                                .map(
+                                    trade =>
+                                        trade.season
+                                )
+                                .filter(
+                                    Boolean
+                                )
+                        )
+                    ]
+            }
+        };
+    };
+
+
+    /*
+        ==================================================
+        BUILD REQUEST PAYLOAD
+        ==================================================
+    */
+
+    const buildPayload = () => {
+        const managerOneName =
+            getManagerName(
+                playerOne
+            );
+
+        const managerTwoName =
+            getManagerName(
+                playerTwo
+            );
+
+
+        const regularGames =
+            summarizeMatchups(
+                rivalry
+                    ?.regularSeason
+                    ?.matchups
+            );
+
+
+        const playoffGames =
+            summarizeMatchups(
+                rivalry
+                    ?.playoffs
+                    ?.matchups
+            );
+
+
+        /*
+            Recalculate everything from the filtered
+            played-game arrays.
+
+            That guarantees a 0-0 game can never leak
+            into the article even if some other code
+            accidentally supplies one later.
+        */
+        const regularRecord =
+            recordFromGames(
+                regularGames
+            );
+
+
+        const playoffRecord =
+            recordFromGames(
+                playoffGames
+            );
+
+
+        return {
+            managerOne:
+                managerOneName,
+
+            managerTwo:
+                managerTwoName,
+
+
+            factSheet:
+                buildFactSheet(
+                    regularGames,
+                    playoffGames
+                ),
+
+
+            regularSeason: {
+                gamesPlayed:
+                    regularGames.length,
+
                 wins: {
                     managerOne:
-                        rivalry
-                            ?.regularSeason
-                            ?.wins
-                            ?.one ?? 0,
+                        regularRecord
+                            .managerOne,
 
                     managerTwo:
-                        rivalry
-                            ?.regularSeason
-                            ?.wins
-                            ?.two ?? 0
+                        regularRecord
+                            .managerTwo
                 },
 
                 ties:
-                    rivalry
-                        ?.regularSeason
-                        ?.ties ?? 0,
+                    regularRecord.ties,
 
                 totalPoints: {
                     managerOne:
                         Number(
-                            (
-                                rivalry
-                                    ?.regularSeason
-                                    ?.points
-                                    ?.one ??
-                                0
-                            ).toFixed(2)
+                            regularGames
+                                .reduce(
+                                    (
+                                        total,
+                                        game
+                                    ) =>
+                                        total +
+                                        game
+                                            .managerOneScore,
+                                    0
+                                )
+                                .toFixed(2)
                         ),
 
                     managerTwo:
                         Number(
-                            (
-                                rivalry
-                                    ?.regularSeason
-                                    ?.points
-                                    ?.two ??
-                                0
-                            ).toFixed(2)
+                            regularGames
+                                .reduce(
+                                    (
+                                        total,
+                                        game
+                                    ) =>
+                                        total +
+                                        game
+                                            .managerTwoScore,
+                                    0
+                                )
+                                .toFixed(2)
                         )
                 },
 
                 matchups:
-                    summarizeMatchups(
-                        rivalry
-                            ?.regularSeason
-                            ?.matchups
-                    )
+                    regularGames
             },
+
 
             playoffs: {
                 note:
-                    'Championship/winners bracket only.',
+                    'Championship/winners bracket only. Consolation games excluded.',
+
+                gamesPlayed:
+                    playoffGames.length,
 
                 wins: {
                     managerOne:
-                        rivalry
-                            ?.playoffs
-                            ?.wins
-                            ?.one ?? 0,
+                        playoffRecord
+                            .managerOne,
 
                     managerTwo:
-                        rivalry
-                            ?.playoffs
-                            ?.wins
-                            ?.two ?? 0
+                        playoffRecord
+                            .managerTwo
                 },
 
                 ties:
-                    rivalry
-                        ?.playoffs
-                        ?.ties ?? 0,
+                    playoffRecord.ties,
 
                 totalPoints: {
                     managerOne:
                         Number(
-                            (
-                                rivalry
-                                    ?.playoffs
-                                    ?.points
-                                    ?.one ??
-                                0
-                            ).toFixed(2)
+                            playoffGames
+                                .reduce(
+                                    (
+                                        total,
+                                        game
+                                    ) =>
+                                        total +
+                                        game
+                                            .managerOneScore,
+                                    0
+                                )
+                                .toFixed(2)
                         ),
 
                     managerTwo:
                         Number(
-                            (
-                                rivalry
-                                    ?.playoffs
-                                    ?.points
-                                    ?.two ??
-                                0
-                            ).toFixed(2)
+                            playoffGames
+                                .reduce(
+                                    (
+                                        total,
+                                        game
+                                    ) =>
+                                        total +
+                                        game
+                                            .managerTwoScore,
+                                    0
+                                )
+                                .toFixed(2)
                         )
                 },
 
                 matchups:
-                    summarizeMatchups(
-                        rivalry
-                            ?.playoffs
-                            ?.matchups
-                    )
+                    playoffGames
             },
+
 
             trades: {
                 totalTrades:
@@ -262,9 +1032,10 @@
                         .filter(Boolean)
             },
 
+
             performance: {
                 note:
-                    'These are overall regular-season career statistics, not head-to-head statistics.',
+                    'Overall regular-season career performance. These are NOT head-to-head statistics.',
 
                 managerOne:
                     summarizePerformance(
@@ -279,25 +1050,51 @@
         };
     };
 
-    const generateWriteup =
-        async () => {
 
+    /*
+        ==================================================
+        GENERATE ARTICLE
+        ==================================================
+    */
+
+    async function generateWriteup(
+        automatic = false
+    ) {
         if (
             generating ||
-            !rivalry
+            !rivalry ||
+            !playerOne ||
+            !playerTwo
         ) {
             return;
         }
 
+
         generating = true;
+
         error = '';
+
+
+        if (!automatic) {
+            /*
+                Keep the previous article visible while
+                Another Take is being written.
+            */
+        }
+        else {
+            article = null;
+            model = '';
+            writer = '';
+        }
+
 
         try {
             const response =
                 await fetch(
                     '/api/ai/rivalry',
                     {
-                        method: 'POST',
+                        method:
+                            'POST',
 
                         headers: {
                             'Content-Type':
@@ -311,8 +1108,10 @@
                     }
                 );
 
+
             const result =
                 await response.json();
+
 
             if (!response.ok) {
                 throw new Error(
@@ -321,11 +1120,32 @@
                 );
             }
 
-            writeup =
-                result.writeup;
+
+            if (
+                !result?.article
+                    ?.headline ||
+                !Array.isArray(
+                    result
+                        ?.article
+                        ?.paragraphs
+                )
+            ) {
+                throw new Error(
+                    'The writer returned an invalid article.'
+                );
+            }
+
+
+            article =
+                result.article;
 
             model =
-                result.model || '';
+                result.model ||
+                '';
+
+            writer =
+                result.writer ||
+                '';
         }
         catch (err) {
             error =
@@ -335,17 +1155,46 @@
         finally {
             generating = false;
         }
-    };
+    }
 
-    const paragraphs = text =>
-        text
-            .split(/\n+/)
-            .map(
-                paragraph =>
-                    paragraph.trim()
+
+    /*
+        ==================================================
+        AUTO-GENERATE
+
+        Generate exactly once each time the selected
+        manager pair/rivalry changes.
+        ==================================================
+    */
+
+    $: autoKey =
+        (
+            rivalry &&
+            playerOne &&
+            playerTwo
+        )
+            ? (
+                `${playerOne}|` +
+                `${playerTwo}|` +
+                `${rivalry?.regularSeason?.matchups?.length || 0}|` +
+                `${rivalry?.playoffs?.matchups?.length || 0}`
             )
-            .filter(Boolean);
+            : '';
+
+
+    $: if (
+        autoKey &&
+        autoKey !== lastAutoKey
+    ) {
+        lastAutoKey =
+            autoKey;
+
+        generateWriteup(
+            true
+        );
+    }
 </script>
+
 
 <style>
     .aiWriter {
@@ -354,46 +1203,70 @@
         margin: 2em auto;
         box-sizing: border-box;
         border-radius: 20px;
-        border: 1px solid var(--aaa);
-        background-color: var(--rivalryBack);
+        border:
+            1px solid var(--aaa);
+        background-color:
+            var(--rivalryBack);
         padding: 2em;
     }
 
     h3 {
         text-align: center;
         font-size: 1.9em;
-        margin: 0 0 0.35em;
+        margin:
+            0 0 0.35em;
     }
 
     .intro {
         max-width: 650px;
-        margin: 0 auto 1.5em;
+        margin:
+            0 auto 1.5em;
         text-align: center;
         color: #888;
         font-size: 0.9em;
     }
 
+    .writing {
+        width: 85%;
+        max-width: 550px;
+        margin:
+            2em auto;
+        text-align: center;
+        color: #888;
+        font-style: italic;
+    }
+
     .buttonHolder {
         text-align: center;
+        margin-top: 1.75em;
     }
 
     button {
-        border: 1px solid #888;
+        border:
+            1px solid #888;
         border-radius: 6px;
-        background: transparent;
-        color: inherit;
-        font: inherit;
-        padding: 0.65em 1.4em;
-        cursor: pointer;
+        background:
+            transparent;
+        color:
+            inherit;
+        font:
+            inherit;
+        padding:
+            0.65em 1.4em;
+        cursor:
+            pointer;
     }
 
-    button:hover:not(:disabled) {
-        background-color: rgba(
-            127,
-            127,
-            127,
-            0.1
-        );
+    button:hover:not(
+        :disabled
+    ) {
+        background-color:
+            rgba(
+                127,
+                127,
+                127,
+                0.1
+            );
     }
 
     button:disabled {
@@ -403,20 +1276,23 @@
 
     .article {
         max-width: 760px;
-        margin: 2em auto 0;
+        margin:
+            2em auto 0;
         line-height: 1.65;
     }
 
     .headline {
-        font-size: 1.35em;
-        font-weight: 600;
+        font-size: 1.45em;
+        font-weight: 650;
         line-height: 1.25;
-        margin: 0 0 1em;
+        margin:
+            0 0 1.2em;
         text-align: center;
     }
 
     .paragraph {
-        margin: 1em 0;
+        margin:
+            1em 0;
     }
 
     .byline {
@@ -428,9 +1304,11 @@
 
     .error {
         text-align: center;
-        margin: 1.5em auto 0;
+        margin:
+            1.5em auto 0;
         color: #c55;
     }
+
 
     @media (
         max-width: 650px
@@ -444,8 +1322,14 @@
             font-size:
                 1.6em;
         }
+
+        .headline {
+            font-size:
+                1.25em;
+        }
     }
 </style>
+
 
 <div class="aiWriter">
 
@@ -453,29 +1337,21 @@
         AI Rivalry Column
     </h3>
 
+
     <div class="intro">
-        A different free AI writer may
-        get the assignment each time.
-        The statistics stay the same;
-        the columnist may not.
+        The league data supplies the facts.
+        A rotating AI columnist supplies the take.
     </div>
 
-    <div class="buttonHolder">
 
-        <button
-            onclick={generateWriteup}
-            disabled={generating}
-        >
-            {#if generating}
-                Writing...
-            {:else if writeup}
-                Generate Another Take
-            {:else}
-                Generate a Take
-            {/if}
-        </button>
+    {#if generating && !article}
 
-    </div>
+        <div class="writing">
+            Writing rivalry column...
+        </div>
+
+    {/if}
+
 
     {#if error}
 
@@ -485,37 +1361,82 @@
 
     {/if}
 
-    {#if writeup}
 
-        {@const parts =
-            paragraphs(writeup)}
+    {#if article}
 
         <div class="article">
 
-            {#if parts.length}
+            <div class="headline">
+                {article.headline}
+            </div>
 
-                <div class="headline">
-                    {parts[0]}
+
+            {#each article.paragraphs as paragraph}
+
+                <div class="paragraph">
+                    {paragraph}
                 </div>
 
-                {#each parts.slice(1) as paragraph}
+            {/each}
 
-                    <div class="paragraph">
-                        {paragraph}
-                    </div>
 
-                {/each}
-
-            {/if}
-
-            {#if model}
+            {#if writer || model}
 
                 <div class="byline">
-                    This take was written by
-                    {model}
+
+                    Written by
+
+                    {#if writer}
+                        {writer}
+                    {:else}
+                        {model}
+                    {/if}
+
                 </div>
 
             {/if}
+
+        </div>
+
+    {/if}
+
+
+    {#if article}
+
+        <div class="buttonHolder">
+
+            <button
+                onclick={() =>
+                    generateWriteup(
+                        false
+                    )
+                }
+                disabled={generating}
+            >
+
+                {#if generating}
+                    Writing Another Take...
+                {:else}
+                    Another Take
+                {/if}
+
+            </button>
+
+        </div>
+
+    {:else if error && !generating}
+
+        <div class="buttonHolder">
+
+            <button
+                onclick={() =>
+                    generateWriteup(
+                        false
+                    )
+                }
+            >
+                Try Again
+            </button>
 
         </div>
 
