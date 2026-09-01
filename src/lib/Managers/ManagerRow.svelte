@@ -55,34 +55,83 @@
             value = 100 - value;
         }
 
-        const t = value / 100;
+        // WN / DYN:
+        // 0   = red
+        // 25  = orange
+        // 50  = yellow
+        // 75  = green
+        // 100 = blue
+        //
+        // REB is inverted when this function is called,
+        // so high rebuild becomes red and low rebuild becomes blue.
 
-        // True red -> blue interpolation
-        const start = {
-            r: 225,
-            g: 95,
-            b: 95
-        };
+        const stops = [
+            {
+                value: 0,
+                r: 220,
+                g: 70,
+                b: 70
+            },
+            {
+                value: 25,
+                r: 235,
+                g: 145,
+                b: 55
+            },
+            {
+                value: 50,
+                r: 235,
+                g: 210,
+                b: 70
+            },
+            {
+                value: 75,
+                r: 85,
+                g: 175,
+                b: 95
+            },
+            {
+                value: 100,
+                r: 75,
+                g: 115,
+                b: 220
+            }
+        ];
 
-        const end = {
-            r: 85,
-            g: 125,
-            b: 225
-        };
+        let lower = stops[0];
+        let upper = stops[stops.length - 1];
+
+        for (let i = 0; i < stops.length - 1; i++) {
+            if (
+                value >= stops[i].value &&
+                value <= stops[i + 1].value
+            ) {
+                lower = stops[i];
+                upper = stops[i + 1];
+                break;
+            }
+        }
+
+        const range = upper.value - lower.value;
+
+        const t =
+            range === 0
+                ? 0
+                : (value - lower.value) / range;
 
         const r = Math.round(
-            start.r +
-            (end.r - start.r) * t
+            lower.r +
+            (upper.r - lower.r) * t
         );
 
         const g = Math.round(
-            start.g +
-            (end.g - start.g) * t
+            lower.g +
+            (upper.g - lower.g) * t
         );
 
         const b = Math.round(
-            start.b +
-            (end.b - start.b) * t
+            lower.b +
+            (upper.b - lower.b) * t
         );
 
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
