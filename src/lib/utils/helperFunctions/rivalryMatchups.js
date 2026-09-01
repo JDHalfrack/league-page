@@ -1,137 +1,606 @@
-import { getLeagueData } from "./leagueData"
+import { getLeagueData } from "./leagueData";
 import { leagueID } from '$lib/utils/leagueInfo';
-import { getNflState } from "./nflState"
 import { waitForAll } from './multiPromise';
-import { getRosterIDFromManagerIDAndYear } from '$lib/utils/helperFunctions/universalFunctions';
-import { getLeagueTeamManagers } from "./leagueTeamManagers";
 
-export const getRivalryMatchups = async (userOneID, userTwoID) => {
-    if(!userOneID || !userTwoID) {
+import {
+    getRosterIDFromManagerIDAndYear
+} from '$lib/utils/helperFunctions/universalFunctions';
+
+import {
+    getLeagueTeamManagers
+} from "./leagueTeamManagers";
+
+
+export const getRivalryMatchups = async (
+    userOneID,
+    userTwoID
+) => {
+    if (!userOneID || !userTwoID) {
         return;
     }
 
     let curLeagueID = leagueID;
 
-	const [nflState, teamManagers] = await waitForAll(
-		getNflState(),
-		getLeagueTeamManagers(),
-	).catch((err) => { console.error(err); });
-
-	let week = 1;
-	if(nflState.season_type == 'regular') {
-		week = nflState.display_week;
-	} else if(nflState.season_type == 'post') {
-		week = 18;
-	}
+    const teamManagers =
+        await getLeagueTeamManagers()
+            .catch(err => {
+                console.error(err);
+            });
 
     const rivalry = {
-        points: {
-            one: 0,
-            two: 0,
-        },
-        wins: {
-            one: 0,
-            two: 0,
-        },
-        ties: 0,
-        matchups: []
-    }
+        regularSeason: createRivalryBucket(),
+        playoffs: createRivalryBucket()
+    };
 
-    while(curLeagueID && curLeagueID != 0) {
-        const leagueData = await getLeagueData(curLeagueID).catch((err) => { console.error(err); });
+
+    /*
+        Walk backward through every linked Sleeper season.
+    */
+    while (
+        curLeagueID &&
+        curLeagueID != 0
+    ) {
+        const leagueData =
+            await getLeagueData(curLeagueID)
+                .catch(err => {
+                    console.error(err);
+                });
+
+        if (!leagueData) {
+            break;
+        }
+
         const year = leagueData.season;
-        const rosterIDOne = getRosterIDFromManagerIDAndYear(teamManagers, userOneID, year);
-        const rosterIDTwo = getRosterIDFromManagerIDAndYear(teamManagers, userTwoID, year);
-        if(!rosterIDOne || !rosterIDTwo || rosterIDOne == rosterIDTwo) {
-            curLeagueID = leagueData.previous_league_id;
-            week = 18;
+
+        const rosterIDOne =
+            getRosterIDFromManagerIDAndYear(
+                teamManagers,
+                userOneID,
+                year
+            );
+
+        const rosterIDTwo =
+            getRosterIDFromManagerIDAndYear(
+                teamManagers,
+                userTwoID,
+                year
+            );
+
+
+        /*
+            If one manager wasn't in the league that year,
+            or they shared the same roster, skip the season.
+        */
+        if (
+            !rosterIDOne ||
+            !rosterIDTwo ||
+            rosterIDOne == rosterIDTwo
+        ) {
+            curLeagueID =
+                leagueData.previous_league_id;
+
             continue;
         }
 
-        // pull in all matchup data for the season
-        const matchupsPromises = [];
-        for(let i = 1; i < leagueData.settings.playoff_week_start; i++) {
-            matchupsPromises.push(fetch(`https://api.sleeper.app/v1/league/${curLeagueID}/matchups/${i}`, {compress: true}))
-        }
-        const matchupsRes = await waitForAll(...matchupsPromises);
 
-        // convert the json matchup responses
-        const matchupsJsonPromises = [];
-        for(const matchupRes of matchupsRes) {
-            const data = matchupRes.json();
-            matchupsJsonPromises.push(data)
-            if (!matchupRes.ok) {
-                throw new Error(data);
+        const playoffStartWeek =
+            parseInt(
+                leagueData.settings
+                    .playoff_week_start
+            );
+
+
+        /*
+            ==========================================
+            REGULAR SEASON
+            ==========================================
+        */
+
+        const regularSeasonPromises = [];
+
+        for (
+            let week = 1;
+            week < playoffStartWeek;
+            week++
+        ) {
+            regularSeasonPromises.push(
+                fetch(
+                    `https://api.sleeper.app/v1/league/${curLeagueID}/matchups/${week}`,
+                    {
+                        compress: true
+                    }
+                )
+            );
+        }
+
+
+        const regularSeasonResponses =
+            await waitForAll(
+                ...regularSeasonPromises
+            );
+
+
+        const regularSeasonJSONPromises = [];
+
+        for (
+            const response
+            of regularSeasonResponses
+        ) {
+            if (!response.ok) {
+                throw new Error(
+                    `Unable to retrieve ${year} rivalry matchup data.`
+                );
             }
-        }
-        const matchupsData = await waitForAll(...matchupsJsonPromises).catch((err) => { console.error(err); }).catch((err) => { console.error(err); });
 
-        // process all the matchups
-        for(let i = 1; i < matchupsData.length + 1; i++) {
-            const processed = processRivalryMatchups(matchupsData[i - 1], i, rosterIDOne, rosterIDTwo);
-            if(processed) {
-                const {matchup, week} = processed;
-                const sideA = matchup[0];
-                const sideB = matchup[1];
-                let sideAPoints = sideA.points.reduce((t, nV) => t + nV, 0);
-                let sideBPoints = sideB.points.reduce((t, nV) => t + nV, 0);
-                rivalry.points.one += sideAPoints;
-                rivalry.points.two += sideBPoints;
-                if(sideAPoints > sideBPoints) {
-                    rivalry.wins.one++;
-                } else if(sideAPoints < sideBPoints) {
-                    rivalry.wins.two++;
-                } else {
-                    rivalry.ties++;
-                }
-                rivalry.matchups.push({
+            regularSeasonJSONPromises.push(
+                response.json()
+            );
+        }
+
+
+        const regularSeasonData =
+            await waitForAll(
+                ...regularSeasonJSONPromises
+            );
+
+
+        for (
+            let i = 0;
+            i < regularSeasonData.length;
+            i++
+        ) {
+            const week = i + 1;
+
+            const processed =
+                processRivalryMatchups(
+                    regularSeasonData[i],
                     week,
+                    rosterIDOne,
+                    rosterIDTwo
+                );
+
+            if (processed) {
+                addMatchup(
+                    rivalry.regularSeason,
+                    processed.matchup,
                     year,
-                    matchup,
-                })
+                    week,
+                    null
+                );
             }
         }
-        curLeagueID = leagueData.previous_league_id;
-        week = 18;
+
+
+        /*
+            ==========================================
+            WINNERS-BRACKET PLAYOFFS ONLY
+            ==========================================
+
+            Sleeper also has consolation/lower-bracket
+            games during these weeks.
+
+            We specifically fetch the WINNERS bracket
+            and use it as the authority for whether
+            these two rosters actually played a
+            championship-bracket playoff game.
+        */
+
+        const winnersBracketResponse =
+            await fetch(
+                `https://api.sleeper.app/v1/league/${curLeagueID}/winners_bracket`,
+                {
+                    compress: true
+                }
+            );
+
+
+        let winnersBracket = [];
+
+        if (winnersBracketResponse.ok) {
+            winnersBracket =
+                await winnersBracketResponse.json();
+        }
+
+
+        if (
+            Array.isArray(winnersBracket) &&
+            winnersBracket.length
+        ) {
+            /*
+                Find every winners-bracket node where
+                these exact two roster IDs met.
+            */
+            const rivalryPlayoffNodes =
+                winnersBracket.filter(node => {
+                    const teamOne =
+                        parseInt(node.t1);
+
+                    const teamTwo =
+                        parseInt(node.t2);
+
+                    return (
+                        (
+                            teamOne ==
+                                parseInt(
+                                    rosterIDOne
+                                ) &&
+                            teamTwo ==
+                                parseInt(
+                                    rosterIDTwo
+                                )
+                        ) ||
+                        (
+                            teamOne ==
+                                parseInt(
+                                    rosterIDTwo
+                                ) &&
+                            teamTwo ==
+                                parseInt(
+                                    rosterIDOne
+                                )
+                        )
+                    );
+                });
+
+
+            /*
+                There could theoretically be more than
+                one qualifying postseason meeting in
+                unusual bracket formats, so process
+                every matching node.
+            */
+            for (
+                const bracketNode
+                of rivalryPlayoffNodes
+            ) {
+                const round =
+                    parseInt(bracketNode.r);
+
+                if (!round) {
+                    continue;
+                }
+
+                /*
+                    Round 1 occurs during
+                    playoff_week_start.
+
+                    Round 2 = following NFL week, etc.
+                */
+                const week =
+                    playoffStartWeek +
+                    round -
+                    1;
+
+
+                const matchupResponse =
+                    await fetch(
+                        `https://api.sleeper.app/v1/league/${curLeagueID}/matchups/${week}`,
+                        {
+                            compress: true
+                        }
+                    );
+
+
+                if (!matchupResponse.ok) {
+                    continue;
+                }
+
+
+                const matchupData =
+                    await matchupResponse.json();
+
+
+                const processed =
+                    processRivalryMatchups(
+                        matchupData,
+                        week,
+                        rosterIDOne,
+                        rosterIDTwo
+                    );
+
+
+                if (!processed) {
+                    continue;
+                }
+
+
+                addMatchup(
+                    rivalry.playoffs,
+                    processed.matchup,
+                    year,
+                    week,
+                    getPlayoffRoundLabel(
+                        round,
+                        winnersBracket
+                    )
+                );
+            }
+        }
+
+
+        curLeagueID =
+            leagueData.previous_league_id;
     }
 
-    rivalry.matchups.sort((a, b) => {
-        var yearOrder = b.year - a.year;
-        var weekOrder = b.week - a.week;
-        return yearOrder || weekOrder;
+
+    /*
+        Newest games first.
+    */
+    sortMatchups(
+        rivalry.regularSeason.matchups
+    );
+
+    sortMatchups(
+        rivalry.playoffs.matchups
+    );
+
+
+    return rivalry;
+};
+
+
+/*
+    =====================================================
+    RIVALRY BUCKET
+    =====================================================
+*/
+
+const createRivalryBucket = () => {
+    return {
+        points: {
+            one: 0,
+            two: 0
+        },
+
+        wins: {
+            one: 0,
+            two: 0
+        },
+
+        ties: 0,
+
+        matchups: []
+    };
+};
+
+
+/*
+    =====================================================
+    ADD ONE COMPLETED MATCHUP
+    =====================================================
+*/
+
+const addMatchup = (
+    bucket,
+    matchup,
+    year,
+    week,
+    label = null
+) => {
+    const sideA = matchup[0];
+    const sideB = matchup[1];
+
+
+    const sideAPoints =
+        sideA.points.reduce(
+            (total, value) =>
+                total + value,
+            0
+        );
+
+
+    const sideBPoints =
+        sideB.points.reduce(
+            (total, value) =>
+                total + value,
+            0
+        );
+
+
+    bucket.points.one += sideAPoints;
+    bucket.points.two += sideBPoints;
+
+
+    if (sideAPoints > sideBPoints) {
+        bucket.wins.one++;
+    }
+    else if (
+        sideAPoints < sideBPoints
+    ) {
+        bucket.wins.two++;
+    }
+    else {
+        bucket.ties++;
+    }
+
+
+    bucket.matchups.push({
+        week,
+        year,
+        label,
+        matchup
     });
+};
 
-	return rivalry;
-}
 
-const processRivalryMatchups = (inputMatchups, week, rosterIDOne, rosterIDTwo) => {
-	if(!inputMatchups || inputMatchups.length == 0) {
-		return false;
-	}
-	const matchups = {};
-	for(const match of inputMatchups) {
-        if(match.roster_id == rosterIDOne || match.roster_id == rosterIDTwo) {
-            if(!matchups[match.matchup_id]) {
-                matchups[match.matchup_id] = [];
+/*
+    =====================================================
+    PROCESS SLEEPER WEEK
+    =====================================================
+*/
+
+const processRivalryMatchups = (
+    inputMatchups,
+    week,
+    rosterIDOne,
+    rosterIDTwo
+) => {
+    if (
+        !inputMatchups ||
+        inputMatchups.length == 0
+    ) {
+        return false;
+    }
+
+
+    const matchups = {};
+
+
+    for (
+        const match
+        of inputMatchups
+    ) {
+        if (
+            match.roster_id ==
+                rosterIDOne ||
+            match.roster_id ==
+                rosterIDTwo
+        ) {
+            if (
+                !matchups[
+                    match.matchup_id
+                ]
+            ) {
+                matchups[
+                    match.matchup_id
+                ] = [];
             }
-            matchups[match.matchup_id].push({
-                roster_id: match.roster_id,
-                starters: match.starters,
-                points: match.starters_points,
-            })
+
+
+            matchups[
+                match.matchup_id
+            ].push({
+                roster_id:
+                    match.roster_id,
+
+                starters:
+                    match.starters,
+
+                points:
+                    match.starters_points
+            });
         }
-	}
-    const keys = Object.keys(matchups);
-    const matchup = matchups[keys[0]];
-    // if the two teams played each other, there will only be one matchup, or if
-    // there is one matchup that only has half the matchup, then one of the teams wasn't in the league yet
-    if(keys.length > 1 || matchup.length == 1) {
+    }
+
+
+    const keys =
+        Object.keys(matchups);
+
+
+    /*
+        Both teams must be members of exactly the
+        same Sleeper matchup.
+    */
+    if (keys.length != 1) {
         return;
     }
-    // make sure that the order matches
-    if(matchup[0].roster_id == rosterIDTwo) {
-        const two = matchup.shift();
+
+
+    const matchup =
+        matchups[keys[0]];
+
+
+    if (
+        !matchup ||
+        matchup.length != 2
+    ) {
+        return;
+    }
+
+
+    /*
+        Keep Player One on the left.
+    */
+    if (
+        matchup[0].roster_id ==
+        rosterIDTwo
+    ) {
+        const two =
+            matchup.shift();
+
         matchup.push(two);
     }
-	return {matchup, week};
-}
+
+
+    return {
+        matchup,
+        week
+    };
+};
+
+
+/*
+    =====================================================
+    PLAYOFF ROUND LABEL
+    =====================================================
+*/
+
+const getPlayoffRoundLabel = (
+    round,
+    winnersBracket
+) => {
+    const rounds =
+        winnersBracket
+            .map(node =>
+                parseInt(node.r)
+            )
+            .filter(
+                value =>
+                    Number.isFinite(value)
+            );
+
+
+    if (!rounds.length) {
+        return `Playoff Round ${round}`;
+    }
+
+
+    const finalRound =
+        Math.max(...rounds);
+
+
+    /*
+        Work backward from the championship so this
+        also works with leagues whose playoff bracket
+        has a different number of rounds.
+    */
+
+    if (round == finalRound) {
+        return "Championship";
+    }
+
+
+    if (round == finalRound - 1) {
+        return "Semifinal";
+    }
+
+
+    if (round == finalRound - 2) {
+        return "Quarterfinal";
+    }
+
+
+    return `Playoff Round ${round}`;
+};
+
+
+/*
+    =====================================================
+    SORT NEWEST -> OLDEST
+    =====================================================
+*/
+
+const sortMatchups = matchups => {
+    matchups.sort((a, b) => {
+        const yearOrder =
+            b.year - a.year;
+
+        const weekOrder =
+            b.week - a.week;
+
+        return (
+            yearOrder ||
+            weekOrder
+        );
+    });
+};
