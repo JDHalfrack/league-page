@@ -1,23 +1,50 @@
 <script>
-	import IconButton from '@smui/icon-button';
+    import IconButton from '@smui/icon-button';
 
-    export let year, displayWeek, selected, length;
+    export let year;
+    export let displayWeek;
+    export let selected;
+    export let length;
 
-    const nav = (dir) => {
-        if(dir === "left") {
-            if(selected > 0) {
+    /*
+        Optional custom label.
+
+        Regular season:
+            2026 Week 6
+
+        Playoffs:
+            2024 Semifinal
+    */
+    export let label = null;
+
+
+    const nav = dir => {
+
+        if (dir === "left") {
+
+            if (selected > 0) {
                 selected--;
-            } else {
-                selected = length - 1;
             }
-        } else {
-            if(selected < length - 1) {
+            else {
+                selected =
+                    length - 1;
+            }
+
+        }
+        else {
+
+            if (
+                selected <
+                length - 1
+            ) {
                 selected++;
-            } else {
+            }
+            else {
                 selected = 0;
             }
+
         }
-    }
+    };
 </script>
 
 <style>
@@ -26,6 +53,7 @@
         justify-content: center;
         align-items: center;
     }
+
     h4 {
         display: inline-block;
         text-align: center;
@@ -34,12 +62,45 @@
     }
 </style>
 
+
 <div class="container">
-    {#if length > 0}
-        <IconButton class="material-icons" onclick={() => nav("left")}>chevron_left</IconButton>
+
+    {#if length > 1}
+
+        <IconButton
+            class="material-icons"
+            onclick={() =>
+                nav("left")
+            }
+        >
+            chevron_left
+        </IconButton>
+
     {/if}
-    <h4>{year} Week {displayWeek}</h4>
-    {#if length > 0}
-        <IconButton class="material-icons" onclick={() => nav("right")}>chevron_right</IconButton>
+
+
+    <h4>
+        {year}
+
+        {#if label}
+            {label}
+        {:else}
+            Week {displayWeek}
+        {/if}
+    </h4>
+
+
+    {#if length > 1}
+
+        <IconButton
+            class="material-icons"
+            onclick={() =>
+                nav("right")
+            }
+        >
+            chevron_right
+        </IconButton>
+
     {/if}
+
 </div>
