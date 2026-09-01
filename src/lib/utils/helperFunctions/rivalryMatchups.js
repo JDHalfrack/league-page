@@ -365,6 +365,15 @@ export const getRivalryMatchups = async (
             =================================================
             WINNERS-BRACKET PLAYOFFS
             =================================================
+
+            Sleeper's bracket node.p field distinguishes
+            the championship from placement games that can
+            occur in the same week.
+
+            p=1 -> Championship
+            p=3 -> Third Place
+            p=5 -> Fifth Place
+            etc.
         */
 
         if (bothActive) {
@@ -501,7 +510,8 @@ export const getRivalryMatchups = async (
                         week,
                         getPlayoffRoundLabel(
                             round,
-                            winnersBracket
+                            winnersBracket,
+                            bracketNode.p
                         )
                     );
                 }
@@ -1538,15 +1548,6 @@ const getFrequencyClass =
     =====================================================
     CADENCE
     =====================================================
-
-    This answers a DIFFERENT question:
-
-    Did these managers actually meet in the seasons they
-    were both around?
-
-    This prevents six scattered matchups from becoming
-    "they meet every season."
-    =====================================================
 */
 
 const getCadenceClass = (
@@ -1772,19 +1773,6 @@ const buildLeagueContext = ({
         );
 
 
-    /*
-        =================================================
-        CRITICAL RANKING FILTER
-        =================================================
-
-        Only CURRENTLY ACTIVE managers count toward
-        current league rivalry rankings.
-
-        Historical games involving retired managers remain
-        in rivalry history, but those pairings are removed
-        from this ranking pool.
-    */
-
     const activeManagerIDs =
         getCurrentActiveManagerIDs(
             teamManagers
@@ -1920,12 +1908,6 @@ const buildLeagueContext = ({
     }
 
 
-    /*
-        Frequency.
-
-        CURRENT unfinished season is not included.
-    */
-
     const completedSeasonCount =
         completedSharedSeasons
             .length;
@@ -1945,13 +1927,6 @@ const buildLeagueContext = ({
             frequencyAverage
         );
 
-
-    /*
-        Cadence.
-
-        This explicitly records whether seasons were
-        skipped.
-    */
 
     const seasonsWithMeetingCount =
         completedSharedSeasonsWithMeeting
@@ -2000,10 +1975,6 @@ const buildLeagueContext = ({
 
 
     return {
-        /*
-            THESE qualitative fields are what AI needs.
-        */
-
         sizeTier,
 
         frequencyClass,
@@ -2040,14 +2011,6 @@ const buildLeagueContext = ({
                 managerOneName,
                 managerTwoOpponentRank
             ),
-
-
-        /*
-            INTERNAL / DEBUG INFORMATION.
-
-            RivalryWriteup deliberately does NOT send these
-            numbers to the AI.
-        */
 
         currentSeason,
 
@@ -2132,12 +2095,50 @@ const buildLeagueContext = ({
     =====================================================
     PLAYOFF LABEL
     =====================================================
+
+    Sleeper winners_bracket node.p identifies placement.
+
+    p=1 -> Championship
+    p=3 -> Third Place
+    p=5 -> Fifth Place
+    p=7 -> Seventh Place
+    etc.
+
+    If p is absent, earlier rounds still use their
+    semifinal/quarterfinal relationship to the last round.
+    =====================================================
 */
 
 const getPlayoffRoundLabel = (
     round,
-    winnersBracket
+    winnersBracket,
+    placement = null
 ) => {
+    const parsedPlacement =
+        Number(
+            placement
+        );
+
+
+    if (
+        Number.isFinite(
+            parsedPlacement
+        ) &&
+        parsedPlacement > 0
+    ) {
+        if (
+            parsedPlacement === 1
+        ) {
+            return "Championship";
+        }
+
+
+        return (
+            `${ordinalWord(parsedPlacement)} Place`
+        );
+    }
+
+
     const rounds =
         winnersBracket
             .map(
@@ -2167,6 +2168,12 @@ const getPlayoffRoundLabel = (
         );
 
 
+    /*
+        Fallback only. Normally a final-round placement
+        node carries p, allowing Championship and Third
+        Place to be distinguished.
+    */
+
     if (
         round ==
         finalRound
@@ -2195,6 +2202,110 @@ const getPlayoffRoundLabel = (
         `Playoff Round ${round}`
     );
 };
+
+
+const ordinalWord =
+    value => {
+
+        const number =
+            Number(
+                value
+            );
+
+
+        const common = {
+            1:
+                'First',
+
+            2:
+                'Second',
+
+            3:
+                'Third',
+
+            4:
+                'Fourth',
+
+            5:
+                'Fifth',
+
+            6:
+                'Sixth',
+
+            7:
+                'Seventh',
+
+            8:
+                'Eighth',
+
+            9:
+                'Ninth',
+
+            10:
+                'Tenth',
+
+            11:
+                'Eleventh',
+
+            12:
+                'Twelfth'
+        };
+
+
+        if (
+            common[
+                number
+            ]
+        ) {
+            return common[
+                number
+            ];
+        }
+
+
+        const mod100 =
+            number %
+            100;
+
+
+        const mod10 =
+            number %
+            10;
+
+
+        let suffix =
+            'th';
+
+
+        if (
+            mod100 < 11 ||
+            mod100 > 13
+        ) {
+            if (
+                mod10 === 1
+            ) {
+                suffix =
+                    'st';
+            }
+            else if (
+                mod10 === 2
+            ) {
+                suffix =
+                    'nd';
+            }
+            else if (
+                mod10 === 3
+            ) {
+                suffix =
+                    'rd';
+            }
+        }
+
+
+        return (
+            `${number}${suffix}`
+        );
+    };
 
 
 /*
