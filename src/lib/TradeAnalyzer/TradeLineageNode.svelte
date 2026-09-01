@@ -135,6 +135,25 @@
         };
 
 
+    const lineageLevel =
+        depth +
+        1;
+
+
+    const levelClass =
+        depth === 0
+            ? 'level1'
+            : depth === 1
+                ? 'level2'
+                : depth === 2
+                    ? 'level3'
+                    : depth === 3
+                        ? 'level4'
+                        : depth === 4
+                            ? 'level5'
+                            : 'levelDeep';
+
+
     const detail =
         item => {
 
@@ -196,9 +215,11 @@
 >
     <div class="connector"></div>
 
-    <div class="nodeBody">
+    <div class={`nodeBody ${levelClass}`}>
         <div class="assetType">
             {node.assetType}
+            ·
+            Lineage level {lineageLevel}
         </div>
 
         <div class="title">
@@ -346,10 +367,40 @@
 
 
     .nodeBody {
-        border: 1px solid rgba(127, 127, 127, 0.24);
+        border: 1px solid rgba(80, 80, 80, 0.22);
         border-radius: 8px;
         padding: 10px 12px;
-        background: rgba(127, 127, 127, 0.06);
+        color: #1f2937;
+    }
+
+
+    .nodeBody.level1 {
+        background: #e8f2ff;
+    }
+
+
+    .nodeBody.level2 {
+        background: #e9f8ed;
+    }
+
+
+    .nodeBody.level3 {
+        background: #fff8d9;
+    }
+
+
+    .nodeBody.level4 {
+        background: #fff0df;
+    }
+
+
+    .nodeBody.level5 {
+        background: #fde8e8;
+    }
+
+
+    .nodeBody.levelDeep {
+        background: #ffffff;
     }
 
 
