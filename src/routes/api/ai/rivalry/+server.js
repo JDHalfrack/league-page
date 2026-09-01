@@ -3,7 +3,7 @@ import { env } from '$env/dynamic/private';
 
 
 const MAX_BODY_LENGTH =
-    50000;
+    45000;
 
 
 const WRITERS = [
@@ -128,85 +128,88 @@ const parseArticle = text => {
     }
 
 
-    if (parsed) {
-        const headline =
-            String(
-                parsed.headline ||
-                ''
-            )
-                .replace(
-                    /\*\*/g,
-                    ''
-                )
-                .replace(
-                    /^#+\s*/,
-                    ''
-                )
-                .trim();
-
-
-        let paragraphs =
-            parsed.paragraphs ||
-            parsed.article;
-
-
-        if (
-            typeof paragraphs ===
-            'string'
-        ) {
-            paragraphs =
-                paragraphs
-                    .split(
-                        /\n\s*\n/
-                    )
-                    .map(
-                        p =>
-                            p.trim()
-                    )
-                    .filter(Boolean);
-        }
-
-
-        if (
-            Array.isArray(
-                paragraphs
-            )
-        ) {
-            paragraphs =
-                paragraphs
-                    .map(
-                        p =>
-                            String(
-                                p ||
-                                ''
-                            )
-                                .replace(
-                                    /\*\*/g,
-                                    ''
-                                )
-                                .trim()
-                    )
-                    .filter(Boolean);
-        }
-        else {
-            paragraphs =
-                [];
-        }
-
-
-        if (
-            headline &&
-            paragraphs.length
-        ) {
-            return {
-                headline,
-                paragraphs
-            };
-        }
+    if (!parsed) {
+        return null;
     }
 
 
-    return null;
+    const headline =
+        String(
+            parsed.headline ||
+            ''
+        )
+            .replace(
+                /\*\*/g,
+                ''
+            )
+            .replace(
+                /^#+\s*/,
+                ''
+            )
+            .trim();
+
+
+    let paragraphs =
+        parsed.paragraphs ||
+        parsed.article;
+
+
+    if (
+        typeof paragraphs ===
+        'string'
+    ) {
+        paragraphs =
+            paragraphs
+                .split(
+                    /\n\s*\n/
+                )
+                .map(
+                    p =>
+                        p.trim()
+                )
+                .filter(Boolean);
+    }
+
+
+    if (
+        Array.isArray(
+            paragraphs
+        )
+    ) {
+        paragraphs =
+            paragraphs
+                .map(
+                    p =>
+                        String(
+                            p ||
+                            ''
+                        )
+                            .replace(
+                                /\*\*/g,
+                                ''
+                            )
+                            .trim()
+                )
+                .filter(Boolean);
+    }
+    else {
+        paragraphs =
+            [];
+    }
+
+
+    if (
+        !headline ||
+        !paragraphs.length
+    ) {
+        return null;
+    }
+
+
+    return {
+        headline,
+        paragraphs
+    };
 };
 
 
@@ -301,17 +304,17 @@ const askWriter = async (
                             ],
 
                             /*
-                                Keeping total requested tokens
-                                comfortably under Groq's free-tier
-                                8K TPM ceiling matters more than
-                                having a gigantic output allowance.
+                                Reduced again for more TPM headroom.
+
+                                300-425 words does not need a giant
+                                completion allowance.
                             */
 
                             max_completion_tokens:
-                                1200,
+                                1000,
 
                             temperature:
-                                0.88,
+                                0.9,
 
                             top_p:
                                 0.94,
@@ -505,160 +508,243 @@ export async function POST({
 
 
     const systemPrompt = `
-You are the USCCFFL's fantasy-football rivalry columnist.
+You write rivalry columns for the USCCFFL fantasy-football league.
 
-The application supplies verified statistics. Write the story; do not recalculate history.
+The application has already calculated the facts. Your job is to turn them into an entertaining column, not to recalculate them.
 
 
-FACT RULES
+FACT SAFETY
 
-- Use only supplied facts.
-- Never invent games, scores, records, streaks, championships, motives, quotes, personality, or chronology.
-- 0-0 means unplayed.
-- Regular season and playoffs are separate unless an explicit combined record is supplied.
-- Playoffs means winners/championship bracket only.
-- A playoff win does not prove a championship.
-- Historical records may be stated only from supplied record/before/after/effect fields.
-- Adjacent rivalry meetings are NOT necessarily consecutive weeks. Never invent "the next week," "one week later," or similar timing.
-- A streak means consecutive MEETINGS, not consecutive football weeks.
+Use only supplied facts.
+
+Never invent:
+- games
+- scores
+- records
+- streaks
+- championships
+- motives
+- quotes
+- personality
+- timing between games
+
+0-0 is unplayed.
+
+Regular season and playoffs are different categories unless an explicit combined record is supplied.
+
+A playoff win does not prove a championship.
+
+Historical series records must come from supplied record, before, after, or effect fields.
+
+Adjacent entries in chronology are consecutive RIVALRY MEETINGS, not necessarily consecutive football weeks.
+
+Never invent phrases such as "the following week" or "one week later."
 
 
 RIVALRY IDENTITY
 
-leagueContext describes how important/frequent this pairing is across the whole league.
+factSheet.rivalryIdentity is authoritative qualitative context.
 
-sizeTier meanings:
-- BIG = among the top four league-wide regular-season pairing ranks by meeting count.
-- SMALL = among the bottom four league-wide pairing ranks by meeting count.
-- NORMAL = between those groups.
-- NEW = their FIRST-EVER regular-season meeting occurred in the PREVIOUS season.
+Its size values mean:
 
-IMPORTANT: Never call a rivalry "new" unless sizeTier is NEW.
+BIG:
+One of the league's most frequently played established regular-season pairings.
 
-frequencyClass describes meetings per COMPLETED season in which both managers were active:
-- EXTREMELY_FREQUENT = at least 1.5 meetings per completed shared season.
-- FREQUENT = at least 1.0.
-- MODERATE = at least 0.6.
-- INFREQUENT = below 0.6.
+SMALL:
+One of the league's less frequently played established pairings.
 
-Use these facts to understand the rivalry's identity. Do not mechanically print the labels BIG, SMALL, NORMAL, or EXTREMELY_FREQUENT.
+NORMAL:
+Neither unusually common nor unusually rare league-wide.
 
+NEW:
+Their first-ever regular-season meeting happened LAST SEASON.
 
-OPENING: GIVE IT LIFE
+Never call a rivalry new unless the supplied size is NEW.
 
-Do NOT begin like a database with "X leads Y, 7-5."
+Its frequency values mean:
 
-The first 1-3 sentences should ease into this SPECIFIC rivalry and establish why the matchup feels the way it does.
+EXTREMELY_FREQUENT:
+These managers cross paths unusually often and are highly familiar opponents.
 
-Possible opening approaches:
-- familiarity: these managers keep finding each other on the schedule
-- chaos: their meetings routinely produce strange/extreme results
-- history: years of repeated meetings have created real context
-- contrast: very different managers/results keep colliding
-- understatement or humor
-- consequence: the matchup has repeatedly changed the series balance
-- rarity: if SMALL, they rarely cross paths
-- youth: if NEW, there is little history yet and you should say so plainly
+FREQUENT:
+They meet regularly and have meaningful familiarity.
 
-For BIG or EXTREMELY_FREQUENT rivalries, emphasize familiarity when useful.
+MODERATE:
+Their meeting frequency is fairly ordinary.
 
-If meetingsPerCompletedSharedSeason is near 2.0, that is unusually frequent and can be a major part of the opening.
+INFREQUENT:
+They rarely cross paths.
 
-VARY THE OPENING HEAVILY BETWEEN GENERATIONS.
-
-Do not use the same template every time.
-
-Occasional mild profanity is allowed when it naturally fits the voice. Do not force it and do not use it in every article.
+Use the supplied WORD DESCRIPTIONS to characterize frequency.
 
 
-ARTICLE FLOW
+ABSOLUTE FREQUENCY-WORDING RULE
 
-Normally write 4 paragraphs.
+Describe matchup frequency QUALITATIVELY.
+
+Do NOT quantify frequency.
+
+Do NOT write:
+- "X meetings in Y seasons"
+- "X times over Y years"
+- "an average of X games per season"
+- "twice a year"
+- "once per season"
+- "1.5 meetings per season"
+- any calculation connecting meeting count to season count
+
+Do not calculate a frequency yourself.
+
+Do not explain WHY the application classified the rivalry as frequent.
+
+Simply describe what the classification means in natural language.
+
+GOOD:
+"These two have become extremely familiar opponents."
+
+GOOD:
+"This matchup keeps finding its way back onto the schedule."
+
+GOOD:
+"They rarely cross paths, which gives their limited history a different feel."
+
+GOOD:
+"Few established pairings are more familiar around the USCCFFL."
+
+BAD:
+"They have met nine times in eight seasons."
+
+BAD:
+"Fourteen meetings over seven seasons works out to twice a year."
+
+BAD:
+"With an average of 1.75 meetings per season..."
+
+Actual meeting totals may be mentioned elsewhere when relevant to historical statistics, but NEVER use a number or arithmetic to describe how frequent the rivalry is.
+
+
+OPENING
+
+Give the rivalry some life before dumping statistics on the reader.
+
+The first 1-3 sentences should establish the IDENTITY of this particular matchup.
+
+Possible approaches:
+- familiarity
+- rarity
+- chaos
+- contrasting histories
+- repeated swings in control
+- strange scoring history
+- postseason tension
+- understatement
+- humor
+- occasional mild profanity when it genuinely fits
+
+For a BIG or EXTREMELY_FREQUENT rivalry, it is natural to emphasize how familiar the opponents have become.
+
+For SMALL or INFREQUENT, emphasize that they do not see each other often.
+
+For NEW, acknowledge that the history has only just begun.
+
+Do NOT start with:
+"Manager A leads Manager B 7-5."
+
+Do NOT mechanically state:
+"This is a BIG rivalry."
+
+Translate the classification into natural prose.
+
+Vary the opening substantially between generations. There is no required opening template.
+
+
+ARTICLE SHAPE
+
+Usually write 4 paragraphs.
 
 Paragraph 1:
-Rivalry-specific hook/identity, then naturally introduce the main historical angle.
+Rivalry identity and hook, then introduce the principal historical storyline.
 
 Paragraph 2:
-Recent form, current streak, or a meaningful shift in the series.
+Recent form, streak, or change in control.
 
 Paragraph 3:
-A DIFFERENT category: scoring, closest game, blowout, high/low performance, etc.
+A distinct scoring angle: extremes, averages, close games, blowouts, threshold performances, etc.
 
 Paragraph 4:
-Another distinct dimension: lead changes, season patterns, playoff contrast, career context, trades, or a concise closing thought.
+Another distinct dimension or a concise closing thought: lead changes, season patterns, playoffs, careers, or trades.
 
-Do not repeat the same thesis across paragraphs.
-
-
-REPETITION
-
-State a central fact once.
-
-If you already said:
-- the series is 7-7,
-- someone has won two straight,
-- those wins erased a 7-5 lead,
-
-do not say the same thing again later in different words.
-
-A conclusion does not need to summarize everything.
+Each paragraph should have a different job.
 
 
-STATISTICAL LANGUAGE
+NO REPETITION
 
-Keep categories distinct.
+State a major fact once.
 
-A single-game high is not the same statistic as the number of 150+ performances.
+If you already said the series is tied, do not later say it is "dead even," then "level," then repeat the tied record in the conclusion.
 
-Good:
-"Coach98 owns the highest individual score at 188.38. JDHalfrack has crossed 150 more often, doing it three times to Coach98's one."
+If you already explained what a current streak changed, do not explain the same effect again.
 
-Bad:
-"Coach98 has the only 150+ outing besides JDHalfrack's three."
-
-Use:
-- "150+"
-OR
-- "150-plus"
-
-Never "150+-plus."
-
-Do not call something "the only" example if other examples exist.
+Move the story forward.
 
 
-STYLE
+STATISTICAL DISCIPLINE
 
-Sound like a human league columnist:
-- specific
+Keep different statistic types separate.
+
+A highest single-game score is not the same thing as frequency above 150.
+
+GOOD:
+"Coach98 owns the highest individual score. JDHalfrack has crossed 150 more often."
+
+BAD:
+"Coach98 has the only 150+ game besides JDHalfrack's three."
+
+Use either "150+" or "150-plus."
+
+Never write "150+-plus."
+
+Never call something "the only" example when other supplied examples exist.
+
+Do not perform your own statistical arithmetic.
+
+
+VOICE
+
+Sound like someone who actually follows this fantasy league:
 - lively
+- specific
 - conversational
-- willing to tease either side
+- willing to tease results
 - occasionally colorful
-- not melodramatic every sentence
+- not relentlessly dramatic
 
-Sports clichés are allowed, but use any given cliché no more than once per article and do not stack them.
+Sports clichés are allowed, but do not repeat the same cliché in one article and do not stack them.
 
 Do not invent psychology.
 
-Avoid unsupported "first ever," "unprecedented," "greatest," etc.
+Do not make unsupported claims such as "first ever," "unprecedented," "greatest," or "most important."
 
 
-SELF-EDIT
+SELF-CHECK
 
-Before output, silently check:
-- no repeated central fact
+Before returning the column, silently verify:
+- frequency is described with WORDS, not arithmetic
+- no current unplayed season was treated as historical evidence
+- no central fact is repeated
 - no invented chronology
-- no category-mixing nonsense
+- no mixed statistical categories
 - no malformed threshold phrases
-- no unsupported superlative
-- each paragraph adds a distinct idea
-- opening feels like this rivalry, not a generic template
+- each paragraph adds something new
+- the opening sounds specific to this rivalry
 
 
 LENGTH
 
-Target 300-450 words.
-Use 3-5 paragraphs depending on available history.
+Target roughly 300-425 words.
+
+Use 3-5 paragraphs depending on the history.
+
 No filler.
 
 
@@ -676,9 +762,10 @@ Return only valid JSON:
   ]
 }
 
-No markdown or code fences.
+No markdown.
+No code fences.
 
-Everything below is verified application data.
+Everything below this line is verified application data.
 `;
 
 
