@@ -1,6 +1,5 @@
 <script>
     import Matchup from "$lib/Matchups/Matchup.svelte";
-
     import TradeTransaction from "$lib/Transactions/TradeTransaction.svelte";
 
     import {
@@ -16,15 +15,12 @@
     } from "$lib/utils/helperFunctions/universalFunctions";
 
     import LinearProgress from '@smui/linear-progress';
-
-    import {
-        onMount
-    } from "svelte";
+    import { onMount } from "svelte";
 
     import ComparissonBar from "./ComparissonBar.svelte";
     import ManagerSelectors from "./ManagerSelectors.svelte";
     import RivalryControls from "./RivalryControls.svelte";
-
+    import RivalryWriteup from "./RivalryWriteup.svelte";
 
     export let leagueTeamManagers;
     export let playersInfo;
@@ -33,7 +29,6 @@
     export let playerOne;
     export let playerTwo;
 
-
     /*
         ============================================
         REFRESH STALE DATA
@@ -41,10 +36,7 @@
     */
 
     onMount(async () => {
-
-        if (
-            transactionsInfo.stale
-        ) {
+        if (transactionsInfo.stale) {
             transactionsInfo =
                 await getLeagueTransactions(
                     false,
@@ -52,10 +44,7 @@
                 );
         }
 
-
-        if (
-            playersInfo.stale
-        ) {
+        if (playersInfo.stale) {
             playersInfo =
                 await loadPlayers(
                     null,
@@ -63,18 +52,13 @@
                 );
         }
 
-
-        if (
-            recordsInfo.stale
-        ) {
+        if (recordsInfo.stale) {
             recordsInfo =
                 await getLeagueRecords(
                     true
                 );
         }
-
     });
-
 
     /*
         ============================================
@@ -84,7 +68,6 @@
 
     let rivalry = null;
     let loading = true;
-
 
     const analyzeRivalry = async (
         p1,
@@ -113,12 +96,10 @@
         }
     };
 
-
     $: analyzeRivalry(
         playerOne,
         playerTwo
     );
-
 
     /*
         ============================================
@@ -128,7 +109,6 @@
 
     let regularSelected = 0;
 
-
     $: regularMatchup =
         rivalry
             ?.regularSeason
@@ -136,7 +116,6 @@
                 regularSelected
             ]
             ?.matchup;
-
 
     $: regularDisplayWeek =
         rivalry
@@ -146,7 +125,6 @@
             ]
             ?.week;
 
-
     $: regularYear =
         rivalry
             ?.regularSeason
@@ -154,7 +132,6 @@
                 regularSelected
             ]
             ?.year;
-
 
     /*
         ============================================
@@ -164,7 +141,6 @@
 
     let playoffSelected = 0;
 
-
     $: playoffMatchup =
         rivalry
             ?.playoffs
@@ -172,7 +148,6 @@
                 playoffSelected
             ]
             ?.matchup;
-
 
     $: playoffDisplayWeek =
         rivalry
@@ -182,7 +157,6 @@
             ]
             ?.week;
 
-
     $: playoffYear =
         rivalry
             ?.playoffs
@@ -191,7 +165,6 @@
             ]
             ?.year;
 
-
     $: playoffLabel =
         rivalry
             ?.playoffs
@@ -199,7 +172,6 @@
                 playoffSelected
             ]
             ?.label;
-
 
     /*
         ============================================
@@ -211,7 +183,6 @@
         p1,
         p2
     ) => {
-
         if (
             !p1 ||
             !p2
@@ -219,20 +190,17 @@
             return [];
         }
 
-
         const trades =
             transactionsInfo
                 .transactions
                 .filter(
                     transaction => {
-
                         if (
                             transaction.type !==
                             "trade"
                         ) {
                             return false;
                         }
-
 
                         const rosterIDOne =
                             parseInt(
@@ -243,7 +211,6 @@
                                 )
                             );
 
-
                         const rosterIDTwo =
                             parseInt(
                                 getRosterIDFromManagerIDAndYear(
@@ -253,14 +220,12 @@
                                 )
                             );
 
-
                         if (
                             rosterIDOne ==
                             rosterIDTwo
                         ) {
                             return false;
                         }
-
 
                         return (
                             transaction.rosters.includes(
@@ -273,13 +238,11 @@
                     }
                 );
 
-
         const move = (
             arr,
             from,
             to
         ) => {
-
             arr.splice(
                 to,
                 0,
@@ -288,16 +251,13 @@
                     1
                 )[0]
             );
-
         };
-
 
         /*
             Reorganize trades so they match the
             left/right alignment of the rivalry page.
         */
         return trades.map(t => {
-
             const rosterIDOne =
                 parseInt(
                     getRosterIDFromManagerIDAndYear(
@@ -306,7 +266,6 @@
                         t.season
                     )
                 );
-
 
             const rosterIDTwo =
                 parseInt(
@@ -317,90 +276,72 @@
                     )
                 );
 
-
             const rosterOneStartLocation =
                 t.rosters.indexOf(
                     rosterIDOne
                 );
 
-
             if (
                 rosterOneStartLocation >
                 0
             ) {
-
                 move(
                     t.rosters,
                     rosterOneStartLocation,
                     0
                 );
 
-
                 for (
                     const tradeMove
                     of t.moves
                 ) {
-
                     move(
                         tradeMove,
                         rosterOneStartLocation,
                         0
                     );
-
                 }
             }
-
 
             const rosterTwoStartLocation =
                 t.rosters.indexOf(
                     rosterIDTwo
                 );
 
-
             const last =
                 t.rosters.length - 1;
-
 
             if (
                 rosterTwoStartLocation <
                 last
             ) {
-
                 move(
                     t.rosters,
                     rosterTwoStartLocation,
                     last
                 );
 
-
                 for (
                     const tradeMove
                     of t.moves
                 ) {
-
                     move(
                         tradeMove,
                         rosterTwoStartLocation,
                         last
                     );
-
                 }
             }
 
-
             return t;
-
         });
-
     };
-
 
     $: tradeHistory =
         setTradeHistory(
             playerOne,
             playerTwo
         );
-
 
     /*
         ============================================
@@ -426,7 +367,6 @@
         }
     ];
 
-
     const performanceOrderTwo = [
         {
             field: "fptsFor",
@@ -444,7 +384,6 @@
         }
     ];
 
-
     $: playerOneRecords =
         recordsInfo
             ?.regularSeasonData
@@ -455,7 +394,6 @@
                     playerOne
                 ]
             : null;
-
 
     $: playerTwoRecords =
         recordsInfo
@@ -560,7 +498,6 @@
             2em 1em;
     }
 
-
     @media (
         max-width: 650px
     ) {
@@ -569,7 +506,6 @@
                 1.6em;
         }
     }
-
 
     @media (
         max-width: 400px
@@ -640,6 +576,20 @@
 
 
     {#if playerOne && playerTwo}
+
+        <!-- =====================================
+             AI RIVALRY WRITE-UP
+             ===================================== -->
+
+        <RivalryWriteup
+            {rivalry}
+            {playerOne}
+            {playerTwo}
+            {leagueTeamManagers}
+            {tradeHistory}
+            {playerOneRecords}
+            {playerTwoRecords}
+        />
 
 
         <!-- =====================================
@@ -713,7 +663,6 @@
             {/if}
 
         </div>
-
 
 
         <!-- =====================================
@@ -794,7 +743,6 @@
         </div>
 
 
-
         <!-- =====================================
              TRADE HISTORY
              ===================================== -->
@@ -825,7 +773,6 @@
             </div>
 
         </div>
-
 
 
         <!-- =====================================
