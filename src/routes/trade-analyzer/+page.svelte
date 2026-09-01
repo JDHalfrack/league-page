@@ -1,4 +1,8 @@
 <script>
+    import TradeLineageNode
+        from '$lib/TradeAnalyzer/TradeLineageNode.svelte';
+
+
     export let data;
 
 
@@ -56,7 +60,7 @@
             }
 
 
-            const name =
+            return (
                 [
                     player.fn,
                     player.ln
@@ -66,44 +70,67 @@
                     )
                     .join(
                         ' '
-                    );
-
-
-            return (
-                name ||
+                    ) ||
                 `Player ${playerID}`
             );
         };
 
 
-    const pickLabel =
-        pick => {
-
-            const base =
-                (
-                    `${pick.season} ` +
-                    `Round ${pick.round} ` +
-                    `(original roster ${pick.originalRosterID})`
-                );
-
+    const rawAssetLabel =
+        asset => {
 
             if (
-                pick
-                    ?.resolved
-                    ?.selectedPlayerID
+                asset.assetType ===
+                'player'
             ) {
-                return (
-                    `${base} → ` +
-                    `${playerName(
-                        pick
-                            .resolved
-                            .selectedPlayerID
-                    )}`
+                return playerName(
+                    asset.playerID
                 );
             }
 
 
-            return base;
+            if (
+                asset.assetType ===
+                'pick'
+            ) {
+                const base =
+                    (
+                        `${asset.season} Round ${asset.round} ` +
+                        `(original roster ${asset.originalRosterID})`
+                    );
+
+
+                if (
+                    asset
+                        ?.resolved
+                        ?.selectedPlayerID
+                ) {
+                    return (
+                        `${base} → ` +
+                        `${playerName(
+                            asset
+                                .resolved
+                                .selectedPlayerID
+                        )}`
+                    );
+                }
+
+
+                return base;
+            }
+
+
+            if (
+                asset.assetType ===
+                'budget'
+            ) {
+                return (
+                    `$${asset.amount} FAAB`
+                );
+            }
+
+
+            return 'Unknown asset';
         };
 
 
@@ -151,7 +178,7 @@
 
 <svelte:head>
     <title>
-        Historical Trade Analyzer Diagnostic
+        Historical Trade Analyzer
     </title>
 </svelte:head>
 
@@ -163,15 +190,16 @@
         </div>
 
         <h1>
-            Phase 1: Source Data Diagnostic
+            Phase 2: Asset Lineage
         </h1>
 
         <p>
-            This page does not grade trades yet.
-            It verifies the historical Sleeper data,
-            resolves traded draft picks into the players
-            eventually selected, and shows the raw assets
-            on each side of every historical trade.
+            Every received player and draft pick is now
+            followed forward. Drops end a branch. Retrades
+            continue into the assets received in return.
+            Draft picks convert into the player actually
+            selected and that player then continues through
+            the same lineage rules.
         </p>
     </section>
 
@@ -179,41 +207,61 @@
     <section class="summaryGrid">
         <div class="summaryCard">
             <span class="summaryValue">
-                {diagnostics?.summary?.seasons ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Seasons
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.trades ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Trades Found
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
                 {diagnostics?.summary?.eligibleTrades ?? 0}
             </span>
 
             <span class="summaryLabel">
-                2+ Years Old
+                Eligible Trades
             </span>
         </div>
 
         <div class="summaryCard">
             <span class="summaryValue">
-                {diagnostics?.summary?.resolvedDraftPicks ?? 0}
+                {diagnostics?.summary?.lineageNodes ?? 0}
             </span>
 
             <span class="summaryLabel">
-                Draft Picks Resolved
+                Lineage Nodes
+            </span>
+        </div>
+
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {diagnostics?.summary?.lineageRetrades ?? 0}
+            </span>
+
+            <span class="summaryLabel">
+                Retrade Events
+            </span>
+        </div>
+
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {diagnostics?.summary?.lineageDrops ?? 0}
+            </span>
+
+            <span class="summaryLabel">
+                Branches Ended by Drop
+            </span>
+        </div>
+
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {diagnostics?.summary?.lineageStillHeld ?? 0}
+            </span>
+
+            <span class="summaryLabel">
+                Still Held
+            </span>
+        </div>
+
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {diagnostics?.summary?.unresolvedDispositions ?? 0}
+            </span>
+
+            <span class="summaryLabel">
+                Need Review
             </span>
         </div>
     </section>
@@ -223,12 +271,13 @@
         <div class="panelHeader">
             <div>
                 <h2>
-                    Historical Data Validation
+                    Source Validation
                 </h2>
 
                 <p>
-                    Each season is sampled directly from its
-                    archived Sleeper league.
+                    Phase 1 checks remain visible so any
+                    suspicious lineage can be traced back to
+                    its archived Sleeper source.
                 </p>
             </div>
         </div>
@@ -238,41 +287,13 @@
             <table class="validationTable">
                 <thead>
                     <tr>
-                        <th>
-                            Season
-                        </th>
-
-                        <th>
-                            Trades
-                        </th>
-
-                        <th>
-                            Drops
-                        </th>
-
-                        <th>
-                            Pick Moves
-                        </th>
-
-                        <th>
-                            Drafts
-                        </th>
-
-                        <th>
-                            Players
-                        </th>
-
-                        <th>
-                            Starters
-                        </th>
-
-                        <th>
-                            players_points
-                        </th>
-
-                        <th>
-                            starters_points
-                        </th>
+                        <th>Season</th>
+                        <th>Trades</th>
+                        <th>Drops</th>
+                        <th>Pick Moves</th>
+                        <th>Drafts</th>
+                        <th>players_points</th>
+                        <th>starters_points</th>
                     </tr>
                 </thead>
 
@@ -300,47 +321,15 @@
                             </td>
 
                             <td>
-                                <span
-                                    class:yes={validation.matchup.hasPlayers}
-                                    class:no={!validation.matchup.hasPlayers}
-                                >
-                                    {validation.matchup.hasPlayers
-                                        ? 'YES'
-                                        : 'NO'}
-                                </span>
+                                {validation.matchup.hasPlayersPoints
+                                    ? `YES (${validation.matchup.playersPointsType})`
+                                    : 'NO'}
                             </td>
 
                             <td>
-                                <span
-                                    class:yes={validation.matchup.hasStarters}
-                                    class:no={!validation.matchup.hasStarters}
-                                >
-                                    {validation.matchup.hasStarters
-                                        ? 'YES'
-                                        : 'NO'}
-                                </span>
-                            </td>
-
-                            <td>
-                                <span
-                                    class:yes={validation.matchup.hasPlayersPoints}
-                                    class:no={!validation.matchup.hasPlayersPoints}
-                                >
-                                    {validation.matchup.hasPlayersPoints
-                                        ? `YES (${validation.matchup.playersPointsType})`
-                                        : 'NO'}
-                                </span>
-                            </td>
-
-                            <td>
-                                <span
-                                    class:yes={validation.matchup.hasStartersPoints}
-                                    class:no={!validation.matchup.hasStartersPoints}
-                                >
-                                    {validation.matchup.hasStartersPoints
-                                        ? `YES (${validation.matchup.startersPointsType})`
-                                        : 'NO'}
-                                </span>
+                                {validation.matchup.hasStartersPoints
+                                    ? `YES (${validation.matchup.startersPointsType})`
+                                    : 'NO'}
                             </td>
                         </tr>
                     {/each}
@@ -354,12 +343,13 @@
         <div class="panelHeader tradeHeader">
             <div>
                 <h2>
-                    Raw Trade Ledger
+                    Trade Lineages
                 </h2>
 
                 <p>
-                    Expand a trade to inspect what every
-                    participant sent and received.
+                    Expand a trade. Each participant gets a
+                    separate franchise-specific tree showing
+                    what happened to the assets they received.
                 </p>
             </div>
 
@@ -405,8 +395,10 @@
                                 </span>
                             </div>
 
-                            <span class:eligible={trade.eligible}
-                                  class:notEligible={!trade.eligible}>
+                            <span
+                                class:eligible={trade.eligible}
+                                class:notEligible={!trade.eligible}
+                            >
                                 {trade.eligible
                                     ? 'ELIGIBLE'
                                     : 'TOO RECENT'}
@@ -422,72 +414,42 @@
                                             {participant.team.name}
                                         </h3>
 
-                                        <div class="assetColumns">
-                                            <div class="assetBox received">
-                                                <h4>
-                                                    Received
-                                                </h4>
+                                        <div class="sentBox">
+                                            <h4>
+                                                Gave Up
+                                            </h4>
 
-                                                {#if !participant.received.players.length &&
-                                                     !participant.received.picks.length}
-                                                    <p class="muted">
-                                                        No tracked player or pick assets.
-                                                    </p>
-                                                {/if}
-
-                                                {#each participant.received.players as playerID}
-                                                    <div class="asset">
-                                                        <span class="assetType">
-                                                            PLAYER
-                                                        </span>
-
-                                                        {playerName(playerID)}
+                                            {#if !participant.sent.length}
+                                                <div class="muted">
+                                                    No tracked player, pick or FAAB assets.
+                                                </div>
+                                            {:else}
+                                                {#each participant.sent as asset}
+                                                    <div class="rawAsset">
+                                                        {rawAssetLabel(asset)}
                                                     </div>
                                                 {/each}
+                                            {/if}
+                                        </div>
 
-                                                {#each participant.received.picks as pick}
-                                                    <div class="asset">
-                                                        <span class="assetType">
-                                                            PICK
-                                                        </span>
 
-                                                        {pickLabel(pick)}
-                                                    </div>
+                                        <div class="lineageBox">
+                                            <h4>
+                                                Received & What Happened
+                                            </h4>
+
+                                            {#if !participant.receivedLineages.length}
+                                                <div class="muted">
+                                                    No tracked received assets.
+                                                </div>
+                                            {:else}
+                                                {#each participant.receivedLineages as lineage}
+                                                    <TradeLineageNode
+                                                        node={lineage}
+                                                        {players}
+                                                    />
                                                 {/each}
-                                            </div>
-
-                                            <div class="assetBox sent">
-                                                <h4>
-                                                    Sent
-                                                </h4>
-
-                                                {#if !participant.sent.players.length &&
-                                                     !participant.sent.picks.length}
-                                                    <p class="muted">
-                                                        No tracked player or pick assets.
-                                                    </p>
-                                                {/if}
-
-                                                {#each participant.sent.players as playerID}
-                                                    <div class="asset">
-                                                        <span class="assetType">
-                                                            PLAYER
-                                                        </span>
-
-                                                        {playerName(playerID)}
-                                                    </div>
-                                                {/each}
-
-                                                {#each participant.sent.picks as pick}
-                                                    <div class="asset">
-                                                        <span class="assetType">
-                                                            PICK
-                                                        </span>
-
-                                                        {pickLabel(pick)}
-                                                    </div>
-                                                {/each}
-                                            </div>
+                                            {/if}
                                         </div>
                                     </section>
                                 {/each}
@@ -502,15 +464,19 @@
 
     <section class="nextStep">
         <h2>
-            What this proves
+            Phase 2 checkpoint
         </h2>
 
         <p>
-            Once the rows and pick resolutions above look
-            correct, the next build will turn this same
-            ledger into recursive franchise-specific asset
-            trees. No trade ratings will be assigned until
-            those trees are verified.
+            The important test now is historical accuracy:
+            a received player should terminate when that
+            franchise dropped him, continue when retained,
+            and branch into the correct return when retraded.
+            A received draft pick should either be retraded
+            or become the correct drafted player. Once these
+            trees are verified, the next phase can attach
+            realized fantasy production to every player node
+            and then build the What We Know Now rating.
         </p>
     </section>
 </div>
@@ -546,7 +512,7 @@
     .intro p,
     .panelHeader p,
     .nextStep p {
-        max-width: 900px;
+        max-width: 950px;
         margin: 0;
         line-height: 1.55;
         opacity: 0.82;
@@ -557,13 +523,13 @@
         display: grid;
         grid-template-columns:
             repeat(
-                4,
+                6,
                 minmax(
                     0,
                     1fr
                 )
             );
-        gap: 12px;
+        gap: 10px;
         margin-bottom: 18px;
     }
 
@@ -578,7 +544,7 @@
 
 
     .summaryCard {
-        padding: 18px;
+        padding: 15px;
         display: flex;
         flex-direction: column;
         gap: 3px;
@@ -586,13 +552,13 @@
 
 
     .summaryValue {
-        font-size: 2rem;
+        font-size: 1.8rem;
         font-weight: 800;
     }
 
 
     .summaryLabel {
-        font-size: 0.88rem;
+        font-size: 0.78rem;
         opacity: 0.72;
     }
 
@@ -627,7 +593,7 @@
     .validationTable {
         width: 100%;
         border-collapse: collapse;
-        min-width: 1000px;
+        min-width: 850px;
     }
 
 
@@ -641,20 +607,10 @@
 
 
     .validationTable th {
-        font-size: 0.76rem;
+        font-size: 0.74rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         opacity: 0.7;
-    }
-
-
-    .yes {
-        font-weight: 800;
-    }
-
-
-    .no {
-        opacity: 0.52;
     }
 
 
@@ -747,11 +703,11 @@
             repeat(
                 auto-fit,
                 minmax(
-                    310px,
+                    340px,
                     1fr
                 )
             );
-        gap: 12px;
+        gap: 14px;
         padding: 0 14px 14px;
     }
 
@@ -759,55 +715,44 @@
     .participant {
         border-top: 1px solid rgba(127, 127, 127, 0.2);
         padding-top: 12px;
+        min-width: 0;
     }
 
 
     .participant h3 {
         margin: 0 0 10px;
+        font-size: 1.45rem;
     }
 
 
-    .assetColumns {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-    }
-
-
-    .assetBox {
+    .sentBox,
+    .lineageBox {
         border: 1px solid rgba(127, 127, 127, 0.2);
-        border-radius: 8px;
-        padding: 10px;
+        border-radius: 9px;
+        padding: 11px;
+        margin-top: 8px;
     }
 
 
-    .assetBox h4 {
+    .sentBox h4,
+    .lineageBox h4 {
         margin: 0 0 8px;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        opacity: 0.7;
+        opacity: 0.68;
     }
 
 
-    .asset {
+    .rawAsset {
         padding: 7px 0;
-        border-top: 1px solid rgba(127, 127, 127, 0.12);
+        border-top: 1px solid rgba(127, 127, 127, 0.14);
         line-height: 1.35;
     }
 
 
-    .asset:first-of-type {
+    .rawAsset:first-of-type {
         border-top: 0;
-    }
-
-
-    .assetType {
-        display: block;
-        font-size: 0.65rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        opacity: 0.5;
     }
 
 
@@ -830,23 +775,40 @@
 
     @media (
         max-width:
-            900px
+            1150px
     ) {
         .summaryGrid {
             grid-template-columns:
-                1fr 1fr;
-        }
-
-
-        .tradeHeader {
-            flex-direction: column;
+                repeat(
+                    3,
+                    1fr
+                );
         }
     }
 
 
     @media (
         max-width:
-            600px
+            800px
+    ) {
+        .tradeHeader {
+            flex-direction: column;
+        }
+
+
+        .summaryGrid {
+            grid-template-columns:
+                repeat(
+                    2,
+                    1fr
+                );
+        }
+    }
+
+
+    @media (
+        max-width:
+            520px
     ) {
         .page {
             width: 94%;
@@ -859,7 +821,7 @@
         }
 
 
-        .assetColumns {
+        .participantGrid {
             grid-template-columns:
                 1fr;
         }
