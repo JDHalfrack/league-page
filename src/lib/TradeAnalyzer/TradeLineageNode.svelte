@@ -104,6 +104,37 @@
         };
 
 
+    const formatSigned =
+        value => {
+
+            const number =
+                Number(
+                    value
+                );
+
+
+            if (
+                !Number.isFinite(
+                    number
+                )
+            ) {
+                return '—';
+            }
+
+
+            return (
+                `${number >= 0 ? '+' : ''}` +
+                `${number.toLocaleString(
+                    'en-US',
+                    {
+                        maximumFractionDigits:
+                            2
+                    }
+                )}`
+            );
+        };
+
+
     const detail =
         item => {
 
@@ -180,23 +211,88 @@
 
         {#if node.assetType === 'player' && node.production}
             <div class="production">
-                <strong>
-                    {node.production.points.toLocaleString(
-                        'en-US',
-                        {
-                            maximumFractionDigits: 2
-                        }
-                    )}
-                </strong>
-                rostered points
-                ·
-                {node.production.rosteredWeeks}
-                rostered weeks
+                <div class="productionPrimary">
+                    <strong>
+                        {node.production.points.toLocaleString(
+                            'en-US',
+                            {
+                                maximumFractionDigits: 2
+                            }
+                        )}
+                    </strong>
+                    rostered points
+                    ·
+                    {node.production.rosteredWeeks}
+                    rostered weeks
+                </div>
+
+                {#if node.production.positionScore !== null
+                    && node.production.positionScore !== undefined}
+                    <div class="positionGrid">
+                        <div class="positionStat">
+                            <span>
+                                Position
+                            </span>
+
+                            <strong>
+                                {node.production.position}
+                            </strong>
+                        </div>
+
+                        <div class="positionStat">
+                            <span>
+                                Position Score
+                            </span>
+
+                            <strong>
+                                {node.production.positionScore}
+                                /100
+                            </strong>
+                        </div>
+
+                        <div class="positionStat">
+                            <span>
+                                Rank
+                            </span>
+
+                            <strong>
+                                {node.production.positionRank}
+                                /{node.production.positionPool}
+                            </strong>
+                        </div>
+
+                        <div class="positionStat">
+                            <span>
+                                Positional Value
+                            </span>
+
+                            <strong>
+                                {node.production.positionalValue}
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div class="comparison">
+                        Same {node.production.position} comparison
+                        over {node.production.comparisonWeeks} rostered weeks:
+                        median {node.production.positionMedianPoints}
+                        pts
+                        ·
+                        {formatSigned(node.production.pointsAboveMedian)}
+                        vs. median
+                    </div>
+                {:else}
+                    <div class="comparison missing">
+                        Position metadata unavailable for this player;
+                        raw rostered points are still preserved.
+                    </div>
+                {/if}
 
                 {#if node.production.missingPointWeeks > 0}
-                    ·
-                    {node.production.missingPointWeeks}
-                    weeks missing point detail
+                    <div class="comparison missing">
+                        {node.production.missingPointWeeks}
+                        rostered weeks are missing player-level point detail.
+                    </div>
                 {/if}
             </div>
         {/if}
@@ -286,14 +382,78 @@
 
 
     .production {
-        margin-top: 7px;
+        margin-top: 8px;
         font-size: 0.84rem;
         line-height: 1.35;
     }
 
 
-    .production strong {
+    .productionPrimary strong {
         font-size: 1.05rem;
+    }
+
+
+    .positionGrid {
+        display: grid;
+        grid-template-columns:
+            repeat(
+                4,
+                minmax(
+                    0,
+                    1fr
+                )
+            );
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+
+    .positionStat {
+        border: 1px solid rgba(127, 127, 127, 0.2);
+        border-radius: 6px;
+        padding: 6px 7px;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+
+    .positionStat span {
+        font-size: 0.63rem;
+        text-transform: uppercase;
+        letter-spacing: 0.045em;
+        opacity: 0.55;
+    }
+
+
+    .positionStat strong {
+        font-size: 0.9rem;
+    }
+
+
+    .comparison {
+        margin-top: 7px;
+        font-size: 0.76rem;
+        opacity: 0.72;
+    }
+
+
+    .comparison.missing {
+        opacity: 0.58;
+    }
+
+
+    @media (max-width: 650px) {
+        .positionGrid {
+            grid-template-columns:
+                repeat(
+                    2,
+                    minmax(
+                        0,
+                        1fr
+                    )
+                );
+        }
     }
 
 
