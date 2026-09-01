@@ -66,6 +66,52 @@
             `${game.loserName} ${score(game.loserScore)}`
         );
     };
+
+
+    /*
+        Negative Impact remains a positive magnitude
+        internally for ranking purposes.
+
+        This merely gives the displayed score the
+        negative sign for effect.
+    */
+
+    const impactScore =
+        (
+            game,
+            negative = false
+        ) => {
+
+        const value =
+            Number(
+                game?.finalScore
+            ) ||
+            0;
+
+
+        return negative
+            ? `-${value}`
+            : `${value}`;
+    };
+
+
+    const coreImpactScore =
+        (
+            game,
+            negative = false
+        ) => {
+
+        const value =
+            Number(
+                game?.coreScore
+            ) ||
+            0;
+
+
+        return negative
+            ? `-${value}`
+            : `${value}`;
+    };
 </script>
 
 
@@ -156,7 +202,22 @@
     }
 
 
+    .cardIdentity {
+        min-width: 0;
+    }
+
+
+    .rank {
+        display: inline-block;
+        margin-right: 0.4em;
+        font-size: 1.2em;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+
     .when {
+        display: inline-block;
         font-size: 0.82em;
         color: var(--g777);
         font-weight: 600;
@@ -185,7 +246,9 @@
 
 
     .tag {
-        display: inline-block;
+        display: block;
+        width: fit-content;
+        margin-top: 0.45em;
         margin-bottom: 0.45em;
         padding: 0.22em 0.55em;
         border: 1px solid var(--aaa);
@@ -312,10 +375,10 @@
 
 
     <div class="intro">
-        These are the games most closely associated with a meaningful
-        change in a manager's historical trajectory. The strongest
-        positive and negative impact games are selected by Impact
-        score, then displayed chronologically.
+        The 50 strongest positive and negative turning points
+        in league history, ranked by Impact score. Game closeness
+        provides only a small bonus after a game has already
+        demonstrated meaningful historical impact.
     </div>
 
 
@@ -356,17 +419,26 @@
                 </div>
 
 
-                {#each impact.positive as game}
+                {#each impact.positive as game, index}
 
                     <article class="impactCard">
 
                         <div class="cardTop">
 
-                            <div>
+                            <div class="cardIdentity">
 
-                                <div class="when">
-                                    {gameLabel(game)}
+                                <div>
+
+                                    <span class="rank">
+                                        #{index + 1}
+                                    </span>
+
+                                    <span class="when">
+                                        {gameLabel(game)}
+                                    </span>
+
                                 </div>
+
 
                                 <div class="tag">
                                     {game.label}
@@ -380,7 +452,7 @@
                                 IMPACT
 
                                 <strong>
-                                    {game.finalScore}
+                                    {impactScore(game)}
                                 </strong>
 
                             </div>
@@ -415,7 +487,7 @@
 
                             <div class="drama">
                                 Core Impact:
-                                {game.coreScore}
+                                {coreImpactScore(game)}
                                 · Close-game bonus:
                                 +{game.dramaBonus}
                             </div>
@@ -453,17 +525,26 @@
                 </div>
 
 
-                {#each impact.negative as game}
+                {#each impact.negative as game, index}
 
                     <article class="impactCard">
 
                         <div class="cardTop">
 
-                            <div>
+                            <div class="cardIdentity">
 
-                                <div class="when">
-                                    {gameLabel(game)}
+                                <div>
+
+                                    <span class="rank">
+                                        #{index + 1}
+                                    </span>
+
+                                    <span class="when">
+                                        {gameLabel(game)}
+                                    </span>
+
                                 </div>
+
 
                                 <div class="tag">
                                     {game.label}
@@ -477,7 +558,10 @@
                                 IMPACT
 
                                 <strong>
-                                    {game.finalScore}
+                                    {impactScore(
+                                        game,
+                                        true
+                                    )}
                                 </strong>
 
                             </div>
@@ -512,9 +596,12 @@
 
                             <div class="drama">
                                 Core Impact:
-                                {game.coreScore}
+                                {coreImpactScore(
+                                    game,
+                                    true
+                                )}
                                 · Close-game bonus:
-                                +{game.dramaBonus}
+                                -{game.dramaBonus}
                             </div>
 
                         {/if}
@@ -548,7 +635,9 @@
             receive additional historical weight. Game closeness is not
             used to make a game historically significant; once a game
             has already cleared the Impact threshold, a close finish can
-            add a small bonus of up to eight points.
+            add a small bonus of up to eight points. Negative Impact
+            scores use a minus sign to represent a downward change in
+            trajectory.
 
         </div>
 
