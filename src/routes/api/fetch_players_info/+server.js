@@ -62,6 +62,8 @@ const computePlayers = (playerData, weeklyData, scoringSettings) => {
             fn: projPlayer.first_name,
             ln: projPlayer.last_name,
             pos: projPlayer.position,
+			age: projPlayer.age ?? null,
+			exp: projPlayer.years_exp ?? null,
         };
         if(projPlayer.team) {
             player.t = projPlayer.team;
