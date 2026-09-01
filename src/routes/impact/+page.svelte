@@ -508,7 +508,7 @@
         10 are shown by default, with the complete top 50
         available below. Impact measures short-term change,
         long-term program trajectory, streaks, and postseason
-        significance. Close finishes and genuine projection
+        significance. Tight margins and genuine projection
         upsets can provide small bonuses after a game has
         already demonstrated historical impact.
     </div>
@@ -533,10 +533,6 @@
 
         <div class="columns">
 
-
-            <!-- =========================================
-                 POSITIVE
-                 ========================================= -->
 
             <section class="column">
 
@@ -628,7 +624,7 @@
 
                                 {#if game.dramaBonus > 0}
 
-                                    · Close-game bonus:
+                                    · Margin bonus:
                                     {signedBonus(
                                         game.dramaBonus
                                     )}
@@ -705,10 +701,6 @@
 
             </section>
 
-
-            <!-- =========================================
-                 NEGATIVE
-                 ========================================= -->
 
             <section class="column">
 
@@ -806,7 +798,7 @@
 
                                 {#if game.dramaBonus > 0}
 
-                                    · Close-game bonus:
+                                    · Margin bonus:
                                     {signedBonus(
                                         game.dramaBonus,
                                         true
@@ -906,12 +898,13 @@
             five-game and ten-game windows, same-season movement,
             meaningful streaks, and championship-bracket games provide
             additional context. Once a game already clears the
-            historical-impact threshold, a close finish can add up to
-            eight points. When historical Sleeper projections are
-            available, a projected underdog winning can add up to four
-            more points. Projection differences under five points are
-            treated as toss-ups. Negative Impact scores use minus signs
-            to represent a downward change in trajectory.
+            historical-impact threshold, a margin of ten points or
+            less can add a small bonus of up to eight points. When
+            historical Sleeper projections are available, a projected
+            underdog winning can add up to four more points. Projection
+            differences under five points are treated as toss-ups.
+            Negative Impact scores use minus signs to represent a
+            downward change in trajectory.
 
         </div>
 
