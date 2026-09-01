@@ -5,27 +5,35 @@ import {
     getLeagueData,
     getLeagueTransactions,
     getAwards,
-    getLeagueRecords,
-    managers as managersObj
+    getLeagueRecords
 } from '$lib/utils/helper';
+
+import { buildManagers } from '$lib/utils/helperFunctions/autoManagers';
+
 export async function load({ url }) {
-    if(!managersObj.length) return false;
+    const leagueTeamManagers = await getLeagueTeamManagers();
+    const managersObj = buildManagers(leagueTeamManagers);
+
     const managersInfo = waitForAll(
-        getLeagueRosters(),    
-        getLeagueTeamManagers(),
+        getLeagueRosters(),
+        Promise.resolve(leagueTeamManagers),
         getLeagueData(),
         getLeagueTransactions(),
         getAwards(),
-        getLeagueRecords(),
+        getLeagueRecords()
     );
 
     const manager = url?.searchParams?.get('manager');
 
-    const props = {
-        manager: manager && manager < managersObj.length ? manager : -1,
+    return {
+        manager:
+            manager !== null &&
+            Number(manager) >= 0 &&
+            Number(manager) < managersObj.length
+                ? Number(manager)
+                : -1,
+
         managers: managersObj,
         managersInfo
-    }
-
-    return props;
+    };
 }
