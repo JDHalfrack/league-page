@@ -5,10 +5,19 @@ import { getLeagueTeamManagers } from './leagueTeamManagers';
 
 /*
     =====================================================
-    HISTORICAL TRADE ANALYZER - PHASE 2
+    HISTORICAL TRADE ANALYZER - PHASE 3
     =====================================================
 
-    Phase 2 builds the recursive ASSET LINEAGE.
+    Phase 3 keeps the recursive ASSET LINEAGE and adds
+    realized fantasy production.
+
+    The production primitive is intentionally simple:
+
+        ALL fantasy points scored while the player was
+        on that franchise's roster.
+
+    Starter versus bench does not matter here. Positional
+    weighting and ranking normalization come later.
 
     It still does NOT assign trade grades.
 
@@ -136,13 +145,13 @@ const buildDiagnostics =
 
 
         const seasonPackages =
-            await Promise.all(
-                seasons.map(
-                    season =>
-                        loadSeasonPackage(
-                            season
-                        )
-                )
+            await mapWithConcurrency(
+                seasons,
+                2,
+                season =>
+                    loadSeasonPackage(
+                        season
+                    )
             );
 
 
@@ -184,6 +193,12 @@ const buildDiagnostics =
             );
 
 
+        const productionLookup =
+            buildProductionLookup(
+                seasonPackages
+            );
+
+
         const latestSeason =
             seasons.length
                 ? seasons[
@@ -207,7 +222,9 @@ const buildDiagnostics =
 
             draftPickLookup,
 
-            currentRosterPlayers
+            currentRosterPlayers,
+
+            productionLookup
         };
 
 
@@ -241,7 +258,7 @@ const buildDiagnostics =
 
         return {
             phase:
-                2,
+                3,
 
             generatedAt:
                 new Date()
@@ -284,7 +301,16 @@ const buildDiagnostics =
                     lineageStats.stillHeld,
 
                 unresolvedDispositions:
-                    lineageStats.unresolved
+                    lineageStats.unresolved,
+
+                realizedRosterPoints:
+                    lineageStats.realizedPoints,
+
+                rosteredPlayerWeeks:
+                    lineageStats.rosteredWeeks,
+
+                missingPointWeeks:
+                    lineageStats.missingPointWeeks
             },
 
             validations:
@@ -408,7 +434,7 @@ const loadSeasonPackage =
         const [
             transactions,
             drafts,
-            matchupValidation
+            matchupPackage
         ] =
             await Promise.all([
                 loadSeasonTransactions(
@@ -419,7 +445,7 @@ const loadSeasonPackage =
                     season
                 ),
 
-                validateSeasonMatchupPayload(
+                loadSeasonMatchups(
                     season
                 )
             ]);
@@ -476,6 +502,9 @@ const loadSeasonPackage =
 
             drafts,
 
+            matchupRows:
+                matchupPackage.rows,
+
             validation: {
                 year:
                     season.year,
@@ -505,7 +534,7 @@ const loadSeasonPackage =
                     drafts.length,
 
                 matchup:
-                    matchupValidation
+                    matchupPackage.validation
             }
         };
     };
@@ -1059,171 +1088,756 @@ const loadCurrentRosterPlayers =
 
 /*
     =====================================================
-    PHASE 1 PAYLOAD VALIDATION
+    HISTORICAL MATCHUPS / REALIZED POINTS
+    =====================================================
+
+    Sleeper preserves a weekly roster snapshot in each
+    matchup row. Phase 3 uses that snapshot as the source
+    of truth for whether a player was rostered that week.
+
+    We count players_points[playerID] whenever:
+      1. the player appears on that roster's players list
+      2. the week falls inside this specific ownership
+         segment of the lineage
+
+    This prevents a later reacquisition from accidentally
+    adding points from an earlier stint.
     =====================================================
 */
 
-const validateSeasonMatchupPayload =
+const loadSeasonMatchups =
     async season => {
 
-        const candidateWeeks =
-            [1];
-
-
-        if (
-            Number.isFinite(
-                season.playoffStart
-            ) &&
-            season.playoffStart >
-                2
-        ) {
-            candidateWeeks.push(
-                season.playoffStart -
-                1
+        const weeks =
+            Array.from(
+                {
+                    length:
+                        18
+                },
+                (
+                    _,
+                    index
+                ) =>
+                    index + 1
             );
-        }
+
+
+        const results =
+            await mapWithConcurrency(
+                weeks,
+                6,
+                async week => {
+
+                    try {
+                        const response =
+                            await fetch(
+                                (
+                                    `https://api.sleeper.app/v1/league/` +
+                                    `${season.leagueID}/matchups/${week}`
+                                ),
+                                {
+                                    compress:
+                                        true
+                                }
+                            );
+
+
+                        if (!response.ok) {
+                            return {
+                                week,
+
+                                rows:
+                                    []
+                            };
+                        }
+
+
+                        const data =
+                            await response.json();
+
+
+                        return {
+                            week,
+
+                            rows:
+                                Array.isArray(
+                                    data
+                                )
+                                    ? data
+                                    : []
+                        };
+                    }
+                    catch {
+                        return {
+                            week,
+
+                            rows:
+                                []
+                        };
+                    }
+                }
+            );
+
+
+        const rows =
+            [];
 
 
         for (
-            const week
-            of candidateWeeks
+            const result
+            of results
         ) {
-            try {
-                const response =
-                    await fetch(
-                        (
-                            `https://api.sleeper.app/v1/league/` +
-                            `${season.leagueID}/matchups/${week}`
-                        ),
-                        {
-                            compress:
-                                true
-                        }
+            for (
+                const row
+                of result.rows
+            ) {
+                rows.push({
+                    ...row,
+
+                    _season:
+                        season.year,
+
+                    _week:
+                        result.week,
+
+                    _leagueID:
+                        season.leagueID
+                });
+            }
+        }
+
+
+        const sample =
+            rows.find(
+                row =>
+                    row &&
+                    (
+                        Array.isArray(
+                            row.players
+                        ) ||
+                        Array.isArray(
+                            row.starters
+                        )
+                    )
+            ) ||
+            null;
+
+
+        const weeksWithRows =
+            new Set(
+                rows.map(
+                    row =>
+                        row._week
+                )
+            );
+
+
+        let rosteredPlayerWeeks =
+            0;
+
+
+        let playerPointWeeks =
+            0;
+
+
+        let missingPointWeeks =
+            0;
+
+
+        for (
+            const row
+            of rows
+        ) {
+            const players =
+                Array.isArray(
+                    row.players
+                )
+                    ? row.players
+                    : [];
+
+
+            for (
+                const rawPlayerID
+                of players
+            ) {
+                const playerID =
+                    String(
+                        rawPlayerID
                     );
 
 
-                if (!response.ok) {
-                    continue;
-                }
+                rosteredPlayerWeeks++;
 
 
-                const data =
-                    await response.json();
+                const score =
+                    readPlayerPoints(
+                        row,
+                        playerID
+                    );
 
 
                 if (
-                    !Array.isArray(
-                        data
-                    ) ||
-                    !data.length
+                    score ===
+                    null
                 ) {
-                    continue;
+                    missingPointWeeks++;
                 }
-
-
-                const row =
-                    data.find(
-                        item =>
-                            item &&
-                            (
-                                Array.isArray(
-                                    item.players
-                                ) ||
-                                Array.isArray(
-                                    item.starters
-                                )
-                            )
-                    ) ||
-                    data[0];
-
-
-                return {
-                    sampledWeek:
-                        week,
-
-                    rowCount:
-                        data.length,
-
-                    hasPlayers:
-                        Array.isArray(
-                            row
-                                ?.players
-                        ),
-
-                    hasStarters:
-                        Array.isArray(
-                            row
-                                ?.starters
-                        ),
-
-                    hasPlayersPoints:
-                        Boolean(
-                            row &&
-                            Object.prototype
-                                .hasOwnProperty
-                                .call(
-                                    row,
-                                    'players_points'
-                                )
-                        ),
-
-                    playersPointsType:
-                        getValueType(
-                            row
-                                ?.players_points
-                        ),
-
-                    hasStartersPoints:
-                        Boolean(
-                            row &&
-                            Object.prototype
-                                .hasOwnProperty
-                                .call(
-                                    row,
-                                    'starters_points'
-                                )
-                        ),
-
-                    startersPointsType:
-                        getValueType(
-                            row
-                                ?.starters_points
-                        )
-                };
-            }
-            catch {
-                /*
-                    Try next candidate.
-                */
+                else {
+                    playerPointWeeks++;
+                }
             }
         }
 
 
         return {
-            sampledWeek:
-                null,
+            rows,
 
-            rowCount:
-                0,
+            validation: {
+                sampledWeek:
+                    sample
+                        ? sample._week
+                        : null,
 
-            hasPlayers:
-                false,
+                rowCount:
+                    rows.length,
 
-            hasStarters:
-                false,
+                weeksWithRows:
+                    weeksWithRows.size,
 
-            hasPlayersPoints:
-                false,
+                hasPlayers:
+                    Array.isArray(
+                        sample
+                            ?.players
+                    ),
 
-            playersPointsType:
-                'missing',
+                hasStarters:
+                    Array.isArray(
+                        sample
+                            ?.starters
+                    ),
 
-            hasStartersPoints:
-                false,
+                hasPlayersPoints:
+                    Boolean(
+                        sample &&
+                        Object.prototype
+                            .hasOwnProperty
+                            .call(
+                                sample,
+                                'players_points'
+                            )
+                    ),
 
-            startersPointsType:
-                'missing'
+                playersPointsType:
+                    getValueType(
+                        sample
+                            ?.players_points
+                    ),
+
+                hasStartersPoints:
+                    Boolean(
+                        sample &&
+                        Object.prototype
+                            .hasOwnProperty
+                            .call(
+                                sample,
+                                'starters_points'
+                            )
+                    ),
+
+                startersPointsType:
+                    getValueType(
+                        sample
+                            ?.starters_points
+                    ),
+
+                rosteredPlayerWeeks,
+
+                playerPointWeeks,
+
+                missingPointWeeks
+            }
         };
+    };
+
+
+const buildProductionLookup =
+    seasonPackages => {
+
+        const lookup =
+            {};
+
+
+        for (
+            const season
+            of seasonPackages
+        ) {
+            const year =
+                Number(
+                    season.year
+                );
+
+
+            if (
+                !lookup[
+                    year
+                ]
+            ) {
+                lookup[
+                    year
+                ] =
+                    {};
+            }
+
+
+            for (
+                const row
+                of season.matchupRows ||
+                []
+            ) {
+                const week =
+                    Number(
+                        row._week
+                    );
+
+
+                const rosterID =
+                    Number(
+                        row.roster_id
+                    );
+
+
+                if (
+                    !Number.isFinite(
+                        week
+                    ) ||
+                    !Number.isFinite(
+                        rosterID
+                    )
+                ) {
+                    continue;
+                }
+
+
+                if (
+                    !lookup[
+                        year
+                    ][
+                        week
+                    ]
+                ) {
+                    lookup[
+                        year
+                    ][
+                        week
+                    ] =
+                        {};
+                }
+
+
+                const players =
+                    Array.isArray(
+                        row.players
+                    )
+                        ? row.players
+                        : [];
+
+
+                const playerMap =
+                    {};
+
+
+                for (
+                    const rawPlayerID
+                    of players
+                ) {
+                    const playerID =
+                        String(
+                            rawPlayerID
+                        );
+
+
+                    playerMap[
+                        playerID
+                    ] = {
+                        rostered:
+                            true,
+
+                        points:
+                            readPlayerPoints(
+                                row,
+                                playerID
+                            )
+                    };
+                }
+
+
+                lookup[
+                    year
+                ][
+                    week
+                ][
+                    rosterID
+                ] =
+                    playerMap;
+            }
+        }
+
+
+        return lookup;
+    };
+
+
+const readPlayerPoints = (
+    row,
+    playerID
+) => {
+
+    const points =
+        row
+            ?.players_points;
+
+
+    if (
+        !points ||
+        typeof points !==
+            'object' ||
+        Array.isArray(
+            points
+        )
+    ) {
+        return null;
+    }
+
+
+    const raw =
+        points[
+            playerID
+        ];
+
+
+    if (
+        raw ===
+            null ||
+        raw ===
+            undefined ||
+        raw ===
+            ''
+    ) {
+        return null;
+    }
+
+
+    const number =
+        Number(
+            raw
+        );
+
+
+    return Number.isFinite(
+        number
+    )
+        ? number
+        : null;
+};
+
+
+const getPlayerProduction =
+    ({
+        playerID,
+        rosterID,
+        startSeason,
+        startRound,
+        endSeason = null,
+        endRound = null,
+        productionLookup
+    }) => {
+
+        let points =
+            0;
+
+
+        let rosteredWeeks =
+            0;
+
+
+        let scoredWeeks =
+            0;
+
+
+        let missingPointWeeks =
+            0;
+
+
+        const seasons =
+            new Set();
+
+
+        const weekly =
+            [];
+
+
+        const startYear =
+            Number(
+                startSeason
+            );
+
+
+        const startWeek =
+            Number.isFinite(
+                Number(
+                    startRound
+                )
+            )
+                ? Number(
+                    startRound
+                )
+                : 0;
+
+
+        const finalYear =
+            endSeason !==
+                null &&
+            endSeason !==
+                undefined &&
+            Number.isFinite(
+                Number(
+                    endSeason
+                )
+            )
+                ? Number(
+                    endSeason
+                )
+                : null;
+
+
+        const finalWeek =
+            endRound !==
+                null &&
+            endRound !==
+                undefined &&
+            Number.isFinite(
+                Number(
+                    endRound
+                )
+            )
+                ? Number(
+                    endRound
+                )
+                : null;
+
+
+        const years =
+            Object.keys(
+                productionLookup ||
+                {}
+            )
+                .map(
+                    Number
+                )
+                .filter(
+                    Number.isFinite
+                )
+                .sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        a -
+                        b
+                );
+
+
+        for (
+            const year
+            of years
+        ) {
+            if (
+                Number.isFinite(
+                    startYear
+                ) &&
+                year <
+                    startYear
+            ) {
+                continue;
+            }
+
+
+            if (
+                finalYear !==
+                    null &&
+                year >
+                    finalYear
+            ) {
+                continue;
+            }
+
+
+            const weeks =
+                Object.keys(
+                    productionLookup
+                        ?.[year] ||
+                    {}
+                )
+                    .map(
+                        Number
+                    )
+                    .filter(
+                        Number.isFinite
+                    )
+                    .sort(
+                        (
+                            a,
+                            b
+                        ) =>
+                            a -
+                            b
+                    );
+
+
+            for (
+                const week
+                of weeks
+            ) {
+                if (
+                    year ===
+                        startYear &&
+                    week <
+                        Math.max(
+                            1,
+                            startWeek
+                        )
+                ) {
+                    continue;
+                }
+
+
+                if (
+                    finalYear !==
+                        null &&
+                    year ===
+                        finalYear &&
+                    finalWeek !==
+                        null &&
+                    week >
+                        finalWeek
+                ) {
+                    continue;
+                }
+
+
+                const playerWeek =
+                    productionLookup
+                        ?.[year]
+                        ?.[week]
+                        ?.[rosterID]
+                        ?.[String(
+                            playerID
+                        )];
+
+
+                if (
+                    !playerWeek
+                        ?.rostered
+                ) {
+                    continue;
+                }
+
+
+                rosteredWeeks++;
+
+
+                seasons.add(
+                    year
+                );
+
+
+                if (
+                    playerWeek.points ===
+                    null
+                ) {
+                    missingPointWeeks++;
+
+
+                    weekly.push({
+                        season:
+                            year,
+
+                        week,
+
+                        points:
+                            null
+                    });
+
+
+                    continue;
+                }
+
+
+                points +=
+                    playerWeek.points;
+
+
+                scoredWeeks++;
+
+
+                weekly.push({
+                    season:
+                        year,
+
+                    week,
+
+                    points:
+                        roundPoints(
+                            playerWeek.points
+                        )
+                });
+            }
+        }
+
+
+        return {
+            points:
+                roundPoints(
+                    points
+                ),
+
+            rosteredWeeks,
+
+            scoredWeeks,
+
+            missingPointWeeks,
+
+            seasons:
+                [
+                    ...seasons
+                ]
+                    .sort(
+                        (
+                            a,
+                            b
+                        ) =>
+                            a -
+                            b
+                    ),
+
+            weekly
+        };
+    };
+
+
+const roundPoints =
+    value => {
+
+        return Math.round(
+            (
+                Number(
+                    value
+                ) ||
+                0
+            ) *
+            100
+        ) /
+        100;
     };
 
 
@@ -1248,6 +1862,69 @@ const getValueType =
 
 
         return typeof value;
+    };
+
+
+const mapWithConcurrency =
+    async (
+        items,
+        limit,
+        mapper
+    ) => {
+
+        const results =
+            new Array(
+                items.length
+            );
+
+
+        let nextIndex =
+            0;
+
+
+        const workers =
+            Array.from(
+                {
+                    length:
+                        Math.max(
+                            1,
+                            Math.min(
+                                limit,
+                                items.length ||
+                                1
+                            )
+                        )
+                },
+                async () => {
+
+                    while (
+                        nextIndex <
+                        items.length
+                    ) {
+                        const currentIndex =
+                            nextIndex++;
+
+
+                        results[
+                            currentIndex
+                        ] =
+                            await mapper(
+                                items[
+                                    currentIndex
+                                ],
+                                currentIndex
+                            );
+                    }
+                }
+            );
+
+
+        await Promise.all(
+            workers
+        );
+
+
+        return results;
     };
 
 
@@ -1352,6 +2029,12 @@ const digestTrade = ({
                         );
 
 
+                const realizedProduction =
+                    summarizeParticipantProduction(
+                        receivedLineages
+                    );
+
+
                 return {
                     rosterID,
 
@@ -1368,7 +2051,9 @@ const digestTrade = ({
                     sent:
                         rawAssets.sent,
 
-                    receivedLineages
+                    receivedLineages,
+
+                    realizedProduction
                 };
             }
         );
@@ -1862,6 +2547,51 @@ const followPlayer = ({
         });
 
 
+    const dispositionSeason =
+        disposition
+            ? Number(
+                disposition
+                    .transaction
+                    ._sourceSeason
+            )
+            : null;
+
+
+    const dispositionRound =
+        disposition
+            ? Number(
+                disposition
+                    .transaction
+                    ._sourceRound
+            )
+            : null;
+
+
+    const production =
+        getPlayerProduction({
+            playerID:
+                asset.playerID,
+
+            rosterID,
+
+            startSeason:
+                acquiredSeason,
+
+            startRound:
+                acquiredRound,
+
+            endSeason:
+                dispositionSeason,
+
+            endRound:
+                dispositionRound,
+
+            productionLookup:
+                lineageContext
+                    .productionLookup
+        });
+
+
     if (!disposition) {
         const currentRoster =
             lineageContext
@@ -1889,6 +2619,8 @@ const followPlayer = ({
             acquiredSeason,
 
             acquiredRound,
+
+            production,
 
             status:
                 stillHeld
@@ -1937,6 +2669,8 @@ const followPlayer = ({
 
             acquiredRound,
 
+            production,
+
             status:
                 'DROPPED',
 
@@ -1980,6 +2714,8 @@ const followPlayer = ({
         acquiredSeason,
 
         acquiredRound,
+
+        production,
 
         transaction,
 
@@ -2211,6 +2947,7 @@ const continueThroughTrade = ({
     acquiredAt,
     acquiredSeason,
     acquiredRound,
+    production = null,
     transaction,
     depth,
     lineageContext,
@@ -2252,6 +2989,12 @@ const continueThroughTrade = ({
             acquiredSeason,
 
             acquiredRound,
+
+            ...(production
+                ? {
+                    production
+                }
+                : {}),
 
             status:
                 'TRADED - SHARED CONTINUATION',
@@ -2347,6 +3090,12 @@ const continueThroughTrade = ({
         acquiredSeason,
 
         acquiredRound,
+
+        ...(production
+            ? {
+                production
+            }
+            : {}),
 
         status:
             assets.length
@@ -2603,6 +3352,128 @@ const getTeamIdentity = (
 };
 
 
+
+const summarizeParticipantProduction =
+    roots => {
+
+        let points =
+            0;
+
+
+        let rosteredWeeks =
+            0;
+
+
+        let scoredWeeks =
+            0;
+
+
+        let missingPointWeeks =
+            0;
+
+
+        const players =
+            new Set();
+
+
+        const visit =
+            node => {
+
+                if (!node) {
+                    return;
+                }
+
+
+                if (
+                    node.assetType ===
+                        'player' &&
+                    node.production
+                ) {
+                    players.add(
+                        String(
+                            node.playerID
+                        )
+                    );
+
+
+                    points +=
+                        Number(
+                            node
+                                .production
+                                .points
+                        ) ||
+                        0;
+
+
+                    rosteredWeeks +=
+                        Number(
+                            node
+                                .production
+                                .rosteredWeeks
+                        ) ||
+                        0;
+
+
+                    scoredWeeks +=
+                        Number(
+                            node
+                                .production
+                                .scoredWeeks
+                        ) ||
+                        0;
+
+
+                    missingPointWeeks +=
+                        Number(
+                            node
+                                .production
+                                .missingPointWeeks
+                        ) ||
+                        0;
+                }
+
+
+                for (
+                    const child
+                    of node.children ||
+                    []
+                ) {
+                    visit(
+                        child
+                    );
+                }
+            };
+
+
+        for (
+            const root
+            of roots ||
+            []
+        ) {
+            visit(
+                root
+            );
+        }
+
+
+        return {
+            points:
+                roundPoints(
+                    points
+                ),
+
+            rosteredWeeks,
+
+            scoredWeeks,
+
+            missingPointWeeks,
+
+            uniquePlayers:
+                players.size
+        };
+    };
+
+
 /*
     =====================================================
     SUMMARY
@@ -2626,6 +3497,15 @@ const summarizeLineages =
                 0,
 
             unresolved:
+                0,
+
+            realizedPoints:
+                0,
+
+            rosteredWeeks:
+                0,
+
+            missingPointWeeks:
                 0
         };
 
@@ -2639,6 +3519,39 @@ const summarizeLineages =
 
 
                 summary.nodes++;
+
+
+                if (
+                    node.assetType ===
+                        'player' &&
+                    node.production
+                ) {
+                    summary.realizedPoints +=
+                        Number(
+                            node
+                                .production
+                                .points
+                        ) ||
+                        0;
+
+
+                    summary.rosteredWeeks +=
+                        Number(
+                            node
+                                .production
+                                .rosteredWeeks
+                        ) ||
+                        0;
+
+
+                    summary.missingPointWeeks +=
+                        Number(
+                            node
+                                .production
+                                .missingPointWeeks
+                        ) ||
+                        0;
+                }
 
 
                 if (
@@ -2712,6 +3625,12 @@ const summarizeLineages =
                 }
             }
         }
+
+
+        summary.realizedPoints =
+            roundPoints(
+                summary.realizedPoints
+            );
 
 
         return summary;
