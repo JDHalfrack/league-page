@@ -21,6 +21,12 @@
     let lastAutoKey = '';
 
 
+    /*
+        ==================================================
+        MANAGER NAME
+        ==================================================
+    */
+
     const getManagerName = id => {
         const user =
             leagueTeamManagers
@@ -38,15 +44,22 @@
 
     /*
         ==================================================
-        AI RIVALRY IDENTITY
+        RIVALRY IDENTITY FOR WRITER
         ==================================================
 
-        ONLY WORDS / CLASSIFICATIONS.
+        The ranking/classification engine can know much
+        more than the writer needs to say.
 
-        No ranks.
-        No season counts.
-        No meeting-rate arithmetic.
-        No missed-season counts.
+        Important editorial rule:
+
+        NORMAL and MODERATE are useful internally, but
+        they are NOT interesting talking points.
+
+        The writer should never produce things like:
+
+        "middle of the frequency spectrum"
+
+        simply because a matchup is ordinary.
     */
 
     const compactLeagueContext =
@@ -57,38 +70,118 @@
         }
 
 
-        return {
-            size:
-                context.sizeTier,
+        const result = {};
 
-            frequency:
-                context.frequencyClass,
 
-            cadence:
-                context.cadenceClass,
+        /*
+            Only noteworthy size classifications deserve
+            to become writer material.
+        */
 
-            newRivalry:
-                context.isNew,
+        if (
+            context.sizeTier ===
+                'BIG'
+        ) {
+            result.importance =
+                'BIG';
 
-            sizeDescription:
-                context.sizeDescription,
+            result.importanceDescription =
+                context.sizeDescription;
+        }
+        else if (
+            context.sizeTier ===
+                'SMALL'
+        ) {
+            result.importance =
+                'SMALL';
 
-            frequencyDescription:
-                context.frequencyDescription,
+            result.importanceDescription =
+                context.sizeDescription;
+        }
+        else if (
+            context.sizeTier ===
+                'NEW'
+        ) {
+            result.importance =
+                'NEW';
 
-            cadenceDescription:
-                context.cadenceDescription,
+            result.importanceDescription =
+                context.sizeDescription;
+        }
 
-            managerOneRelationship:
-                context
-                    .managerOneRelationship,
 
-            managerTwoRelationship:
-                context
-                    .managerTwoRelationship
-        };
+        /*
+            Likewise, MODERATE frequency is not a story.
+
+            Extremely frequent, frequent, and infrequent
+            can actually characterize the rivalry.
+        */
+
+        if (
+            context.frequencyClass ===
+                'EXTREMELY_FREQUENT' ||
+            context.frequencyClass ===
+                'FREQUENT' ||
+            context.frequencyClass ===
+                'INFREQUENT'
+        ) {
+            result.familiarity =
+                context.frequencyClass;
+
+            result.familiarityDescription =
+                context.frequencyDescription;
+        }
+
+
+        /*
+            Cadence is useful because it prevents the
+            writer from inventing annual regularity.
+
+            We preserve it even when ordinary.
+        */
+
+        if (
+            context.cadenceClass
+        ) {
+            result.cadence =
+                context.cadenceClass;
+
+            result.cadenceDescription =
+                context.cadenceDescription;
+        }
+
+
+        if (
+            context.managerOneRelationship
+        ) {
+            result.managerOneRelationship =
+                context.managerOneRelationship;
+        }
+
+
+        if (
+            context.managerTwoRelationship
+        ) {
+            result.managerTwoRelationship =
+                context.managerTwoRelationship;
+        }
+
+
+        return (
+            Object.keys(
+                result
+            ).length
+                ? result
+                : null
+        );
     };
 
+
+    /*
+        ==================================================
+        LEDGER
+        ==================================================
+    */
 
     const compactLedger =
         ledger => {
@@ -132,6 +225,12 @@
     };
 
 
+    /*
+        ==================================================
+        CURRENT STREAK
+        ==================================================
+    */
+
     const compactCurrentStreak =
         streak => {
 
@@ -142,7 +241,7 @@
 
         if (
             streak.type ===
-            'tie'
+                'tie'
         ) {
             return {
                 type:
@@ -183,6 +282,12 @@
     };
 
 
+    /*
+        ==================================================
+        LONGEST STREAK
+        ==================================================
+    */
+
     const compactLongest =
         streak => {
 
@@ -206,6 +311,12 @@
         };
     };
 
+
+    /*
+        ==================================================
+        EXTREME GAME
+        ==================================================
+    */
 
     const compactExtreme =
         game => {
@@ -233,6 +344,12 @@
         };
     };
 
+
+    /*
+        ==================================================
+        INDIVIDUAL SCORING
+        ==================================================
+    */
 
     const compactIndividual =
         stats => {
@@ -266,6 +383,12 @@
         };
     };
 
+
+    /*
+        ==================================================
+        SCORING
+        ==================================================
+    */
 
     const compactScoring = (
         factSheet,
@@ -335,6 +458,7 @@
                     )
             },
 
+
             playoffs:
                 factSheet
                     ?.meetingCounts
@@ -371,6 +495,12 @@
     };
 
 
+    /*
+        ==================================================
+        SEASON SUMMARIES
+        ==================================================
+    */
+
     const compactSeasons =
         seasons => {
 
@@ -401,6 +531,12 @@
     };
 
 
+    /*
+        ==================================================
+        LEAD CHANGES
+        ==================================================
+    */
+
     const compactLeadChanges =
         changes => {
 
@@ -427,6 +563,12 @@
         );
     };
 
+
+    /*
+        ==================================================
+        CAREER
+        ==================================================
+    */
 
     const compactCareer =
         career => {
@@ -459,6 +601,119 @@
     };
 
 
+    /*
+        ==================================================
+        RECENT HISTORY WITH REDUNDANCY PRUNING
+        ==================================================
+
+        A current four-game winning streak already proves
+        that manager won the last three.
+
+        Giving the writer both facts encourages it to say
+        both facts.
+
+        So narrower windows wholly contained by the
+        current streak are removed before generation.
+    */
+
+    const buildRecentContext =
+        factSheet => {
+
+        const currentStreak =
+            factSheet
+                ?.streaks
+                ?.regularSeason
+                ?.current;
+
+
+        const streakLength =
+            (
+                currentStreak &&
+                currentStreak.type !==
+                    'tie'
+            )
+                ? (
+                    Number(
+                        currentStreak.length
+                    ) ||
+                    0
+                )
+                : 0;
+
+
+        const recent =
+            {};
+
+
+        if (
+            streakLength < 3
+        ) {
+            recent.last3 =
+                factSheet
+                    ?.recentRegularSeason
+                    ?.last3
+                    ?.recordText ||
+                null;
+        }
+
+
+        if (
+            streakLength < 5
+        ) {
+            recent.last5 =
+                factSheet
+                    ?.recentRegularSeason
+                    ?.last5
+                    ?.recordText ||
+                null;
+        }
+
+
+        if (
+            streakLength < 10
+        ) {
+            recent.last10 =
+                factSheet
+                    ?.recentRegularSeason
+                    ?.last10
+                    ?.recordText ||
+                null;
+        }
+
+
+        /*
+            Remove nulls so they cost no tokens and cannot
+            distract the writer.
+        */
+
+        for (
+            const key
+            of Object.keys(
+                recent
+            )
+        ) {
+            if (!recent[key]) {
+                delete recent[key];
+            }
+        }
+
+
+        return (
+            Object.keys(
+                recent
+            ).length
+                ? recent
+                : null
+        );
+    };
+
+
+    /*
+        ==================================================
+        WRITER DOSSIER
+        ==================================================
+    */
+
     const buildWriterDossier = (
         factSheet,
         leagueContext
@@ -475,15 +730,26 @@
                 ?.managerTwo;
 
 
+        const currentStreak =
+            compactCurrentStreak(
+                factSheet
+                    ?.streaks
+                    ?.regularSeason
+                    ?.current
+            );
+
+
         return {
             rivalryIdentity:
                 compactLeagueContext(
                     leagueContext
                 ),
 
+
             meetings:
                 factSheet
                     ?.meetingCounts,
+
 
             records: {
                 regular:
@@ -505,18 +771,15 @@
                         ?.statement
             },
 
+
             firstAndLatest:
                 factSheet
                     ?.firstAndMostRecent,
 
+
             streaks: {
                 current:
-                    compactCurrentStreak(
-                        factSheet
-                            ?.streaks
-                            ?.regularSeason
-                            ?.current
-                    ),
+                    currentStreak,
 
                 longest: {
                     [managerOne]:
@@ -547,25 +810,18 @@
                     )
             },
 
-            recent: {
-                last3:
-                    factSheet
-                        ?.recentRegularSeason
-                        ?.last3
-                        ?.recordText,
 
-                last5:
-                    factSheet
-                        ?.recentRegularSeason
-                        ?.last5
-                        ?.recordText,
+            /*
+                Narrower recent windows may be omitted
+                automatically when the current streak
+                already contains them.
+            */
 
-                last10:
+            recent:
+                buildRecentContext(
                     factSheet
-                        ?.recentRegularSeason
-                        ?.last10
-                        ?.recordText
-            },
+                ),
+
 
             scoring:
                 compactScoring(
@@ -574,12 +830,14 @@
                     managerTwo
                 ),
 
+
             seasons:
                 compactSeasons(
                     factSheet
                         ?.seasonBySeason
                         ?.regularSeason
                 ),
+
 
             leadChanges:
                 compactLeadChanges(
@@ -588,10 +846,12 @@
                         ?.regularSeason
                 ),
 
+
             maximumSeriesLead:
                 factSheet
                     ?.seriesLeadHistory
                     ?.maximumRegularSeasonLead,
+
 
             chronology: {
                 regular:
@@ -609,9 +869,11 @@
                     )
             },
 
+
             trades:
                 factSheet
                     ?.trades,
+
 
             career: {
                 [managerOne]:
@@ -631,6 +893,12 @@
         };
     };
 
+
+    /*
+        ==================================================
+        BUILD REQUEST
+        ==================================================
+    */
 
     const buildPayload = () => {
         const managerOneName =
@@ -677,6 +945,12 @@
         };
     };
 
+
+    /*
+        ==================================================
+        RESPONSE
+        ==================================================
+    */
 
     const readResponse =
         async response => {
@@ -733,6 +1007,12 @@
         return result;
     };
 
+
+    /*
+        ==================================================
+        GENERATE
+        ==================================================
+    */
 
     async function generateWriteup(
         automatic = false
@@ -841,6 +1121,12 @@
         }
     }
 
+
+    /*
+        ==================================================
+        AUTOMATIC GENERATION KEY
+        ==================================================
+    */
 
     $: regularPointsOne =
         rivalry
