@@ -33,6 +33,13 @@ import { getLeagueTeamManagers } from './leagueTeamManagers';
 
     Scores remain independent rather than zero-sum.
 
+    CURRENT-SEASON RULE
+    - Future Sleeper matchup placeholders do NOT count.
+    - The current season is capped at the last completed
+      NFL/fantasy week.
+    - Before Week 1 is completed, current-season production
+      contributes zero rostered weeks and zero points.
+
     PLAYER RULES
     - A player received in a trade is followed forward
       while that franchise owns him.
@@ -173,13 +180,18 @@ const buildDiagnostics =
             await getHistoricalLeagueChain();
 
 
+        const nflState =
+            await getCurrentNflState();
+
+
         const seasonPackages =
             await mapWithConcurrency(
                 seasons,
                 2,
                 season =>
                     loadSeasonPackage(
-                        season
+                        season,
+                        nflState
                     )
             );
 
@@ -379,6 +391,9 @@ const buildDiagnostics =
                     tradeSideScoring.averageScore
             },
 
+            currentSeasonState:
+                nflState,
+
             scoreMethodology: {
                 evenMaxGap:
                     EVEN_MAX_GAP,
@@ -410,6 +425,129 @@ const buildDiagnostics =
 
             draftPickLookup
         };
+    };
+
+
+
+const getCurrentNflState =
+    async () => {
+
+        try {
+            const response =
+                await fetch(
+                    'https://api.sleeper.app/v1/state/nfl',
+                    {
+                        compress:
+                            true
+                    }
+                );
+
+
+            if (!response.ok) {
+                return null;
+            }
+
+
+            const state =
+                await response.json();
+
+
+            const season =
+                Number(
+                    state
+                        ?.league_season ||
+                    state
+                        ?.season
+                );
+
+
+            const week =
+                Number(
+                    state
+                        ?.week
+                );
+
+
+            const seasonType =
+                String(
+                    state
+                        ?.season_type ||
+                    ''
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            let lastCompletedWeek =
+                null;
+
+
+            if (
+                seasonType ===
+                    'pre' ||
+                seasonType ===
+                    'preseason'
+            ) {
+                lastCompletedWeek =
+                    0;
+            }
+            else if (
+                seasonType ===
+                    'regular'
+            ) {
+                lastCompletedWeek =
+                    Number.isFinite(
+                        week
+                    )
+                        ? Math.max(
+                            0,
+                            week -
+                            1
+                        )
+                        : null;
+            }
+            else if (
+                seasonType ===
+                    'post' ||
+                seasonType ===
+                    'postseason'
+            ) {
+                /*
+                    The NFL regular season is complete.
+                    The league-specific final-week cap is
+                    applied separately.
+                */
+
+                lastCompletedWeek =
+                    18;
+            }
+
+
+            return {
+                season:
+                    Number.isFinite(
+                        season
+                    )
+                        ? season
+                        : null,
+
+                week:
+                    Number.isFinite(
+                        week
+                    )
+                        ? week
+                        : null,
+
+                seasonType:
+                    seasonType ||
+                    null,
+
+                lastCompletedWeek
+            };
+        }
+        catch {
+            return null;
+        }
     };
 
 
@@ -596,7 +734,10 @@ const getPlayoffRoundCount =
 */
 
 const loadSeasonPackage =
-    async season => {
+    async (
+        season,
+        nflState = null
+    ) => {
 
         const [
             transactions,
@@ -613,7 +754,8 @@ const loadSeasonPackage =
                 ),
 
                 loadSeasonMatchups(
-                    season
+                    season,
+                    nflState
                 )
             ]);
 
@@ -708,6 +850,20 @@ const loadSeasonPackage =
 
                 finalLeagueWeek:
                     season.finalLeagueWeek,
+
+                currentSeasonLastCompletedWeek:
+                    (
+                        Number(
+                            season.year
+                        ) ===
+                        Number(
+                            nflState
+                                ?.season
+                        )
+                    )
+                        ? nflState
+                            ?.lastCompletedWeek
+                        : null,
 
                 matchup:
                     matchupPackage.validation
@@ -1282,9 +1438,12 @@ const loadCurrentRosterPlayers =
 */
 
 const loadSeasonMatchups =
-    async season => {
+    async (
+        season,
+        nflState = null
+    ) => {
 
-        const lastWeek =
+        const configuredLastWeek =
             (
                 Number.isFinite(
                     Number(
@@ -1300,6 +1459,52 @@ const loadSeasonMatchups =
                     season.finalLeagueWeek
                 )
                 : 18;
+
+
+        const isCurrentSeason =
+            (
+                Number.isFinite(
+                    Number(
+                        nflState
+                            ?.season
+                    )
+                ) &&
+                Number(
+                    season.year
+                ) ===
+                    Number(
+                        nflState.season
+                    )
+            );
+
+
+        const currentCompletedWeek =
+            (
+                isCurrentSeason &&
+                Number.isFinite(
+                    Number(
+                        nflState
+                            ?.lastCompletedWeek
+                    )
+                )
+            )
+                ? Math.max(
+                    0,
+                    Number(
+                        nflState.lastCompletedWeek
+                    )
+                )
+                : null;
+
+
+        const lastWeek =
+            currentCompletedWeek ===
+                null
+                ? configuredLastWeek
+                : Math.min(
+                    configuredLastWeek,
+                    currentCompletedWeek
+                );
 
 
         const weeks =
@@ -1497,6 +1702,13 @@ const loadSeasonMatchups =
 
                 weeksWithRows:
                     weeksWithRows.size,
+
+                requestedThroughWeek:
+                    lastWeek,
+
+                currentSeasonCapApplied:
+                    currentCompletedWeek !==
+                    null,
 
                 hasPlayers:
                     Array.isArray(
