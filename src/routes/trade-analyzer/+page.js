@@ -10,17 +10,23 @@ import {
 export async function load({
     fetch
 }) {
-    const [
-        diagnostics,
-        playersData
-    ] =
-        await Promise.all([
-            getTradeLineageDiagnostics(),
+    /*
+        Phase 4 needs player position metadata before it can
+        normalize each historical ownership stint.
+    */
 
-            loadPlayers(
-                fetch
-            )
-        ]);
+    const playersData =
+        await loadPlayers(
+            fetch
+        );
+
+
+    const diagnostics =
+        await getTradeLineageDiagnostics(
+            playersData
+                ?.players ||
+            {}
+        );
 
 
     return {
