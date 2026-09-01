@@ -178,6 +178,30 @@
             {node.status}
         </div>
 
+        {#if node.assetType === 'player' && node.production}
+            <div class="production">
+                <strong>
+                    {node.production.points.toLocaleString(
+                        'en-US',
+                        {
+                            maximumFractionDigits: 2
+                        }
+                    )}
+                </strong>
+                rostered points
+                ·
+                {node.production.rosteredWeeks}
+                rostered weeks
+
+                {#if node.production.missingPointWeeks > 0}
+                    ·
+                    {node.production.missingPointWeeks}
+                    weeks missing point detail
+                {/if}
+            </div>
+        {/if}
+
+
         {#if node.disposition?.date}
             <div class="meta">
                 {formatDate(node.disposition.date)}
@@ -258,6 +282,18 @@
         font-size: 0.69rem;
         font-weight: 800;
         letter-spacing: 0.035em;
+    }
+
+
+    .production {
+        margin-top: 7px;
+        font-size: 0.84rem;
+        line-height: 1.35;
+    }
+
+
+    .production strong {
+        font-size: 1.05rem;
     }
 
 
