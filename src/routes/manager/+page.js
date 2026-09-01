@@ -5,7 +5,8 @@ import {
     getLeagueData,
     getLeagueTransactions,
     getAwards,
-    getLeagueRecords
+    getLeagueRecords,
+    getNflState
 } from '$lib/utils/helper';
 
 import { buildManagers } from '$lib/utils/helperFunctions/autoManagers';
@@ -20,7 +21,8 @@ export async function load({ url }) {
         getLeagueData(),
         getLeagueTransactions(),
         getAwards(),
-        getLeagueRecords()
+        getLeagueRecords(),
+        getNflState()
     );
 
     const manager = url?.searchParams?.get('manager');
