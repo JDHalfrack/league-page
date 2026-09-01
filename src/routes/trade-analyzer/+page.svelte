@@ -190,21 +190,36 @@
         </div>
 
         <h1>
-            Phase 2: Asset Lineage
+            Phase 3: Realized Roster Points
         </h1>
 
         <p>
-            Every received player and draft pick is now
-            followed forward. Drops end a branch. Retrades
-            continue into the assets received in return.
-            Draft picks convert into the player actually
-            selected and that player then continues through
-            the same lineage rules.
+            Every lineage now carries the fantasy points
+            actually scored while each player was on that
+            franchise's roster. Starter and bench status do
+            not matter. Drops stop the points, retrades stop
+            that player and continue into the return, and a
+            used draft pick becomes the selected player.
         </p>
     </section>
 
 
     <section class="summaryGrid">
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {(diagnostics?.summary?.realizedRosterPoints ?? 0).toLocaleString(
+                    'en-US',
+                    {
+                        maximumFractionDigits: 1
+                    }
+                )}
+            </span>
+
+            <span class="summaryLabel">
+                Rostered Points Traced
+            </span>
+        </div>
+
         <div class="summaryCard">
             <span class="summaryValue">
                 {diagnostics?.summary?.eligibleTrades ?? 0}
@@ -275,9 +290,10 @@
                 </h2>
 
                 <p>
-                    Phase 1 checks remain visible so any
-                    suspicious lineage can be traced back to
-                    its archived Sleeper source.
+                    Historical matchup coverage remains
+                    visible so rostered-point totals can be
+                    audited against Sleeper's archived
+                    players_points data.
                 </p>
             </div>
         </div>
@@ -292,8 +308,9 @@
                         <th>Drops</th>
                         <th>Pick Moves</th>
                         <th>Drafts</th>
+                        <th>Weeks</th>
                         <th>players_points</th>
-                        <th>starters_points</th>
+                        <th>Missing Point Weeks</th>
                     </tr>
                 </thead>
 
@@ -321,15 +338,17 @@
                             </td>
 
                             <td>
+                                {validation.matchup.weeksWithRows ?? 0}
+                            </td>
+
+                            <td>
                                 {validation.matchup.hasPlayersPoints
                                     ? `YES (${validation.matchup.playersPointsType})`
                                     : 'NO'}
                             </td>
 
                             <td>
-                                {validation.matchup.hasStartersPoints
-                                    ? `YES (${validation.matchup.startersPointsType})`
-                                    : 'NO'}
+                                {validation.matchup.missingPointWeeks ?? 0}
                             </td>
                         </tr>
                     {/each}
@@ -414,6 +433,30 @@
                                             {participant.team.name}
                                         </h3>
 
+                                        <div class="realizedBox">
+                                            <span class="realizedLabel">
+                                                Realized lineage production
+                                            </span>
+
+                                            <strong class="realizedValue">
+                                                {(participant.realizedProduction?.points ?? 0).toLocaleString(
+                                                    'en-US',
+                                                    {
+                                                        maximumFractionDigits: 2
+                                                    }
+                                                )}
+                                                pts
+                                            </strong>
+
+                                            <span class="realizedMeta">
+                                                {participant.realizedProduction?.rosteredWeeks ?? 0}
+                                                rostered player-weeks
+                                                ·
+                                                {participant.realizedProduction?.uniquePlayers ?? 0}
+                                                players
+                                            </span>
+                                        </div>
+
                                         <div class="sentBox">
                                             <h4>
                                                 Gave Up
@@ -464,19 +507,19 @@
 
     <section class="nextStep">
         <h2>
-            Phase 2 checkpoint
+            Phase 3 checkpoint
         </h2>
 
         <p>
-            The important test now is historical accuracy:
-            a received player should terminate when that
-            franchise dropped him, continue when retained,
-            and branch into the correct return when retraded.
-            A received draft pick should either be retraded
-            or become the correct drafted player. Once these
-            trees are verified, the next phase can attach
-            realized fantasy production to every player node
-            and then build the What We Know Now rating.
+            The important test now is the point accounting.
+            Each player node should show only the fantasy
+            points scored during that specific ownership
+            stint. A retrade ends that player's point window
+            and begins the descendant assets. The franchise
+            total is the sum of every player node in that
+            received lineage. Positional weighting and the
+            final What We Know Now rating remain deliberately
+            outside this phase.
         </p>
     </section>
 </div>
@@ -523,7 +566,7 @@
         display: grid;
         grid-template-columns:
             repeat(
-                6,
+                7,
                 minmax(
                     0,
                     1fr
@@ -722,6 +765,39 @@
     .participant h3 {
         margin: 0 0 10px;
         font-size: 1.45rem;
+    }
+
+
+    .realizedBox {
+        border: 1px solid rgba(127, 127, 127, 0.28);
+        border-radius: 9px;
+        padding: 12px;
+        margin: 8px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        background: rgba(127, 127, 127, 0.08);
+    }
+
+
+    .realizedLabel {
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.62;
+    }
+
+
+    .realizedValue {
+        font-size: 1.55rem;
+        line-height: 1.1;
+    }
+
+
+    .realizedMeta {
+        font-size: 0.77rem;
+        opacity: 0.68;
     }
 
 
