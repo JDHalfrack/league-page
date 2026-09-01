@@ -790,6 +790,112 @@ Career information may be used for context, but identify it correctly.
 
 
 =====================================================
+STATISTICAL CATEGORY DISCIPLINE
+=====================================================
+
+Do not combine different statistical categories into one comparison unless the comparison is logically valid and clearly worded.
+
+Different statistical categories include:
+
+- highest single-game score
+- lowest single-game score
+- average score
+- total score
+- number of 150+ games
+- number of 175+ games
+- number of 200+ games
+- number of sub-100 games
+- largest victory margin
+- average margin
+- median margin
+- number of wins
+- winning streak length
+
+These facts may appear near each other, but they are NOT interchangeable.
+
+BAD:
+
+"Coach98 owns the highest score, the only 150+ outing besides JDHalfrack's three games above that mark."
+
+That sentence incorrectly mixes:
+
+- a single-game maximum
+- a count of threshold performances
+
+GOOD:
+
+"Coach98 owns the highest single-game score in the series at 188.38 points. JDHalfrack has crossed 150 more often, doing it three times compared with Coach98 once."
+
+That correctly separates:
+
+- highest individual score
+- frequency of 150+ performances
+
+When comparing threshold counts, compare counts directly.
+
+When comparing single-game highs, compare single-game highs directly.
+
+When comparing averages, compare averages directly.
+
+When comparing margins, compare margins directly.
+
+Do not describe superiority in one statistical category as though it automatically proves superiority in another.
+
+
+=====================================================
+THRESHOLD LANGUAGE
+=====================================================
+
+Use clean threshold language.
+
+GOOD:
+
+"150+ points"
+
+"a 150-point performance"
+
+"scored at least 150"
+
+"crossed 150 three times"
+
+"JDHalfrack has three 150+ performances."
+
+"Coach98 has one 150+ performance."
+
+BAD:
+
+"150+-plus"
+
+"150-plus+"
+
+"the only 150+ outing besides three other 150+ outings"
+
+"the only X besides multiple other Xs"
+
+If one manager has one qualifying performance and the other has three, say exactly that.
+
+GOOD:
+
+"Coach98 has one 150+ performance; JDHalfrack has three."
+
+Do NOT call either performance "the only" qualifying performance when other qualifying performances exist.
+
+Do not combine a threshold symbol and the word "plus."
+
+Use either:
+
+"150+"
+
+or:
+
+"150-plus"
+
+Never:
+
+"150+-plus"
+
+
+=====================================================
 EDITORIAL GOAL
 =====================================================
 
@@ -873,6 +979,7 @@ Build the article so each paragraph has a different purpose.
 
 You do not have to use every paragraph category if the data is thin.
 
+
 PARAGRAPH 1 — THE HISTORICAL FRAME
 
 Establish the main historical situation.
@@ -931,8 +1038,17 @@ Good material:
 - low individual performance
 - average margin
 - median margin
+- threshold-performance counts
 
 Do NOT mention the current streak or series record here unless absolutely necessary to understand a scoring fact.
+
+When using multiple scoring statistics, keep statistical categories distinct.
+
+For example:
+
+"Coach98 owns the highest individual score. JDHalfrack has more 150+ performances."
+
+That is clearer than attempting to compress both facts into one convoluted comparison.
 
 
 PARAGRAPH 4 — ANOTHER HISTORICAL DIMENSION
@@ -1167,19 +1283,38 @@ Before returning the article, silently inspect it.
 Ask:
 
 1. Did I state the same series record more than once?
+
 2. Did I describe the current streak more than once?
+
 3. Did I explain the effect of that streak more than once?
+
 4. Did two paragraphs have essentially the same thesis?
+
 5. Did I repeat the same score unnecessarily?
-6. Did I repeat the same cliché?
+
+6. Did I repeat the same cliché or stock phrase?
+
 7. Did I invent a week-to-week relationship?
+
 8. Did I infer a historical record instead of using supplied data?
+
 9. Did I make an unsupported "first ever" or "never before" claim?
+
 10. Could one paragraph be deleted without losing a distinct idea?
 
-If the answer to 1-9 is yes, revise before responding.
+11. Did I accidentally combine a single-game record with a frequency/count statistic as though they were the same category?
 
-If the answer to 10 is yes, remove or rewrite the redundant paragraph.
+12. Did I compare two statistics that measure fundamentally different things without clearly distinguishing them?
+
+13. Did I write any malformed threshold expression such as "150+-plus"?
+
+14. Did I call something "the only" example even though the data lists other examples?
+
+15. Did I use "150+" and "150-plus" redundantly in the same phrase?
+
+If the answer to questions 1-9 or 11-15 is yes, revise the article before responding.
+
+If the answer to question 10 is yes, remove or rewrite the redundant paragraph.
 
 
 =====================================================
