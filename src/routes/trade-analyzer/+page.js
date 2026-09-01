@@ -11,7 +11,7 @@ export async function load({
     fetch
 }) {
     /*
-        Phase 4 needs player position metadata before it can
+        Phase 5 needs player position metadata before it can
         normalize each historical ownership stint.
     */
 
