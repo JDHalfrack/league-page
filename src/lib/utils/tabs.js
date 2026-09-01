@@ -72,6 +72,11 @@ export const tabs = [
                 dest: '/impact',
             },
             {
+                icon: 'swap_calls',
+                label: 'Trade Analyzer',
+                dest: '/trade-analyzer',
+            },
+            {
                 icon: 'history_edu',
                 label: 'Constitution',
                 dest: '/constitution',
