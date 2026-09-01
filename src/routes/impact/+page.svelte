@@ -68,14 +68,6 @@
     };
 
 
-    /*
-        Negative Impact remains a positive magnitude
-        internally for ranking purposes.
-
-        This merely gives the displayed score the
-        negative sign for effect.
-    */
-
     const impactScore =
         (
             game,
@@ -111,6 +103,39 @@
         return negative
             ? `-${value}`
             : `${value}`;
+    };
+
+
+    const signedBonus =
+        (
+            value,
+            negative = false
+        ) => {
+
+        const number =
+            Number(
+                value
+            ) ||
+            0;
+
+
+        return negative
+            ? `-${number}`
+            : `+${number}`;
+    };
+
+
+    const hasBonus =
+        game => {
+
+        return (
+            Number(
+                game?.dramaBonus
+            ) > 0 ||
+            Number(
+                game?.projectionBonus
+            ) > 0
+        );
     };
 </script>
 
@@ -287,12 +312,19 @@
     }
 
 
-    .drama {
+    .bonuses {
         margin-top: 0.75em;
         padding-top: 0.6em;
         border-top: 1px solid var(--aaa);
         font-size: 0.75em;
         color: var(--g777);
+        line-height: 1.55;
+    }
+
+
+    .projectionInfo {
+        margin-top: 0.35em;
+        font-style: italic;
     }
 
 
@@ -376,9 +408,11 @@
 
     <div class="intro">
         The 50 strongest positive and negative turning points
-        in league history, ranked by Impact score. Game closeness
-        provides only a small bonus after a game has already
-        demonstrated meaningful historical impact.
+        in league history, ranked by Impact score. Impact measures
+        short-term change, long-term program trajectory, streaks,
+        and postseason significance. Close finishes and genuine
+        projection upsets can provide small bonuses after a game
+        has already demonstrated historical impact.
     </div>
 
 
@@ -483,13 +517,45 @@
                         </ul>
 
 
-                        {#if game.dramaBonus > 0}
+                        {#if hasBonus(game)}
 
-                            <div class="drama">
+                            <div class="bonuses">
+
                                 Core Impact:
                                 {coreImpactScore(game)}
-                                · Close-game bonus:
-                                +{game.dramaBonus}
+
+
+                                {#if game.dramaBonus > 0}
+
+                                    · Close-game bonus:
+                                    {signedBonus(
+                                        game.dramaBonus
+                                    )}
+
+                                {/if}
+
+
+                                {#if game.projectionBonus > 0}
+
+                                    · Upset bonus:
+                                    {signedBonus(
+                                        game.projectionBonus
+                                    )}
+
+
+                                    <div class="projectionInfo">
+
+                                        Projected:
+                                        {game.winnerName}
+                                        {score(game.winnerProjection)}
+                                        –
+                                        {game.loserName}
+                                        {score(game.loserProjection)}
+
+                                    </div>
+
+                                {/if}
+
                             </div>
 
                         {/if}
@@ -592,16 +658,50 @@
                         </ul>
 
 
-                        {#if game.dramaBonus > 0}
+                        {#if hasBonus(game)}
 
-                            <div class="drama">
+                            <div class="bonuses">
+
                                 Core Impact:
                                 {coreImpactScore(
                                     game,
                                     true
                                 )}
-                                · Close-game bonus:
-                                -{game.dramaBonus}
+
+
+                                {#if game.dramaBonus > 0}
+
+                                    · Close-game bonus:
+                                    {signedBonus(
+                                        game.dramaBonus,
+                                        true
+                                    )}
+
+                                {/if}
+
+
+                                {#if game.projectionBonus > 0}
+
+                                    · Upset bonus:
+                                    {signedBonus(
+                                        game.projectionBonus,
+                                        true
+                                    )}
+
+
+                                    <div class="projectionInfo">
+
+                                        Projected:
+                                        {game.loserName}
+                                        {score(game.loserProjection)}
+                                        –
+                                        {game.winnerName}
+                                        {score(game.winnerProjection)}
+
+                                    </div>
+
+                                {/if}
+
                             </div>
 
                         {/if}
@@ -628,16 +728,20 @@
                 How Impact works:
             </strong>
 
-            A game's core score measures how substantially a manager's
-            results changed after that game, including short-term and
-            extended trajectory, season-level change, and meaningful
-            streak beginnings or endings. Championship-bracket games
-            receive additional historical weight. Game closeness is not
-            used to make a game historically significant; once a game
-            has already cleared the Impact threshold, a close finish can
-            add a small bonus of up to eight points. Negative Impact
-            scores use a minus sign to represent a downward change in
-            trajectory.
+            Core Impact measures whether a game sits at a meaningful
+            change in a manager's trajectory. The largest component
+            compares the manager's results across the two seasons
+            preceding the game's season with the following three
+            seasons, while shorter five-game and ten-game windows,
+            same-season movement, meaningful streaks, and
+            championship-bracket games provide additional context.
+            Once a game already clears the historical-impact threshold,
+            a close finish can add up to eight points. When historical
+            Sleeper projections are available, a projected underdog
+            winning can add up to four more points. Projection
+            differences under five points are treated as toss-ups.
+            Negative Impact scores use minus signs to represent a
+            downward change in trajectory.
 
         </div>
 
