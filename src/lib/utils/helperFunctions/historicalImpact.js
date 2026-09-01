@@ -27,13 +27,25 @@ import {
 
     Core Impact includes:
 
-    - long-term multi-season trajectory
+    - long-term historical trajectory
     - next/previous five games
     - next/previous ten games
     - same-season trajectory
     - streaks begun
     - streaks ended
     - championship-bracket significance
+
+    LONG-TERM WINDOW
+
+    BEFORE:
+        - up to two seasons before the focal season
+        - PLUS the beginning of the focal season when
+          at least seven games occurred before this game
+
+    AFTER:
+        - up to three seasons after the focal season
+        - PLUS the remainder of the focal season when
+          at least eight games occurred after this game
 
     AFTER a game independently qualifies as impactful:
 
@@ -72,6 +84,24 @@ const MAX_UPSET_BONUS =
 
 const PROJECTION_FAVORITE_THRESHOLD =
     5;
+
+
+/*
+    Same-season games needed before they become part of
+    the LONG-TERM historical sample.
+
+    User rule:
+
+    - more than 6 already played = 7+
+    - more than 7 remaining = 8+
+*/
+
+const MIN_CURRENT_SEASON_BEFORE =
+    7;
+
+
+const MIN_CURRENT_SEASON_AFTER =
+    8;
 
 
 const PROJECTION_QUERY =
@@ -1392,25 +1422,22 @@ const calculateImpact = ({
         LONG-TERM HISTORICAL TRAJECTORY
         =================================================
 
-        Compare:
+        This window is centered on the GAME, not merely
+        on the boundaries of the calendar/fantasy season.
 
-        two completed calendar seasons BEFORE this game's
-        season
+        BEFORE includes:
 
-        versus
+        - previous two seasons
+        - PLUS this season's earlier games when at least
+          seven occurred before the focal game
 
-        three seasons AFTER this game's season.
+        AFTER includes:
 
-        The current season is intentionally excluded from
-        this component. Immediate/current-season behavior
-        is measured separately below.
+        - following three seasons
+        - PLUS this season's later games when at least
+          eight occurred after the focal game
 
-        This allows a true regime change such as:
-
-        19-4 before
-        10-32 afterward
-
-        to become one of the strongest pieces of evidence.
+        The focal game itself is never counted.
     */
 
     const longTermSignal =
@@ -1841,7 +1868,7 @@ const calculateImpact = ({
             Math.min(
                 100,
                 coreScore +
-                dramaBonus
+                    dramaBonus
             ),
 
         reasons:
@@ -1883,17 +1910,12 @@ const calculateLongTermSignal = ({
     current,
     direction
 }) => {
-    const earliestBeforeYear =
-        current.year -
-        2;
 
+    /*
+        Full historical seasons around the focal season.
+    */
 
-    const latestAfterYear =
-        current.year +
-        3;
-
-
-    const before =
+    const priorSeasons =
         history.filter(
             (
                 game,
@@ -1902,13 +1924,13 @@ const calculateLongTermSignal = ({
                 gameIndex <
                     index &&
                 game.year >=
-                    earliestBeforeYear &&
+                    current.year - 2 &&
                 game.year <
                     current.year
         );
 
 
-    const after =
+    const futureSeasons =
         history.filter(
             (
                 game,
@@ -1919,19 +1941,117 @@ const calculateLongTermSignal = ({
                 game.year >
                     current.year &&
                 game.year <=
-                    latestAfterYear
+                    current.year + 3
         );
 
 
-    const beforeYears =
-        uniqueSeasonCount(
-            before
+    /*
+        Substantial pieces of the focal season.
+
+        We deliberately do NOT include small fragments here.
+        Those already contribute through the immediate
+        five-game, ten-game, and same-season calculations.
+    */
+
+    const currentSeasonBefore =
+        history.filter(
+            (
+                game,
+                gameIndex
+            ) =>
+                gameIndex <
+                    index &&
+                game.year ===
+                    current.year
         );
 
 
-    const afterYears =
+    const currentSeasonAfter =
+        history.filter(
+            (
+                game,
+                gameIndex
+            ) =>
+                gameIndex >
+                    index &&
+                game.year ===
+                    current.year
+        );
+
+
+    const includeCurrentBefore =
+        currentSeasonBefore.length >=
+        MIN_CURRENT_SEASON_BEFORE;
+
+
+    const includeCurrentAfter =
+        currentSeasonAfter.length >=
+        MIN_CURRENT_SEASON_AFTER;
+
+
+    /*
+        The actual long-term samples are now centered on
+        the game itself.
+
+        Example:
+
+        BEFORE:
+            2021
+            2022
+            2023 first 8 games
+
+        GAME:
+            2023 focal game
+
+        AFTER:
+            2023 final 8 games
+            2024
+            2025
+            2026
+    */
+
+    const before =
+        [
+            ...priorSeasons,
+
+            ...(
+                includeCurrentBefore
+                    ? currentSeasonBefore
+                    : []
+            )
+        ];
+
+
+    const after =
+        [
+            ...(
+                includeCurrentAfter
+                    ? currentSeasonAfter
+                    : []
+            ),
+
+            ...futureSeasons
+        ];
+
+
+    /*
+        Count only genuinely separate prior/future seasons
+        here.
+
+        The focal season's substantial fragment contributes
+        additional evidence, but we do not pretend that a
+        partial season is a full historical season.
+    */
+
+    const priorSeasonCount =
         uniqueSeasonCount(
-            after
+            priorSeasons
+        );
+
+
+    const futureSeasonCount =
+        uniqueSeasonCount(
+            futureSeasons
         );
 
 
@@ -1980,9 +2100,25 @@ const calculateLongTermSignal = ({
             afterGames:
                 after.length,
 
-            beforeYears,
+            priorSeasonCount,
 
-            afterYears,
+            futureSeasonCount,
+
+            currentSeasonBeforeGames:
+                includeCurrentBefore
+                    ? currentSeasonBefore.length
+                    : 0,
+
+            currentSeasonAfterGames:
+                includeCurrentAfter
+                    ? currentSeasonAfter.length
+                    : 0,
+
+            includedCurrentBefore:
+                includeCurrentBefore,
+
+            includedCurrentAfter:
+                includeCurrentAfter,
 
             difference:
                 0
@@ -2018,7 +2154,7 @@ const calculateLongTermSignal = ({
 
         .826 -> .238 = .588
 
-        That receives almost the full trajectory weight.
+        That receives nearly maximum change strength.
     */
 
     const changeStrength =
@@ -2030,7 +2166,13 @@ const calculateLongTermSignal = ({
 
 
     /*
-        Require meaningful game volume on both sides.
+        Require meaningful game volume on BOTH sides.
+
+        Twelve games on each side provides full game-level
+        evidence.
+
+        A substantial current-season segment helps reach
+        that threshold naturally.
     */
 
     const gameEvidence =
@@ -2045,36 +2187,114 @@ const calculateLongTermSignal = ({
 
 
     /*
-        Also reward persistence across actual seasons.
+        Historical persistence.
 
-        Full evidence:
-            two prior seasons
-            three following seasons
+        A partial focal-season segment is meaningful, but
+        it is not treated as a whole season.
 
-        Recent games with fewer future seasons naturally
-        receive less long-term credit.
+        Give it one-half season of evidence.
+
+        BEFORE full target:
+            2 prior seasons
+
+        AFTER full target:
+            3 future seasons
+
+        Examples:
+
+        2 prior seasons alone:
+            full before-season evidence
+
+        1 prior season + 7+ focal-season games:
+            1.5 / 2 evidence
+
+        2 future seasons + 8+ focal-season games:
+            2.5 / 3 evidence
     */
 
-    const seasonEvidence =
-        Math.sqrt(
-            Math.min(
-                1,
-                beforeYears /
-                    2
-            ) *
-            Math.min(
-                1,
-                afterYears /
-                    3
-            )
+    const beforeSeasonUnits =
+        priorSeasonCount +
+        (
+            includeCurrentBefore
+                ? 0.5
+                : 0
         );
 
 
+    const afterSeasonUnits =
+        futureSeasonCount +
+        (
+            includeCurrentAfter
+                ? 0.5
+                : 0
+        );
+
+
+    const beforePersistence =
+        Math.min(
+            1,
+            beforeSeasonUnits /
+                2
+        );
+
+
+    const afterPersistence =
+        Math.min(
+            1,
+            afterSeasonUnits /
+                3
+        );
+
+
+    const persistenceEvidence =
+        Math.sqrt(
+            beforePersistence *
+            afterPersistence
+        );
+
+
+    /*
+        The focal-season pieces also help make the location
+        of the turning point more precise.
+
+        If there is substantial evidence immediately on
+        both sides of the game, give a modest confidence
+        improvement.
+
+        This does NOT increase the 35-point maximum.
+    */
+
+    let breakpointConfidence =
+        1;
+
+
+    if (
+        includeCurrentBefore &&
+        includeCurrentAfter
+    ) {
+        breakpointConfidence =
+            1.08;
+    }
+    else if (
+        includeCurrentBefore ||
+        includeCurrentAfter
+    ) {
+        breakpointConfidence =
+            1.04;
+    }
+
+
     const score =
-        35 *
-        changeStrength *
-        gameEvidence *
-        seasonEvidence;
+        Math.min(
+            35,
+            (
+                35 *
+                changeStrength *
+                gameEvidence *
+                persistenceEvidence *
+                breakpointConfidence
+            )
+        );
 
 
     return {
@@ -2100,9 +2320,25 @@ const calculateLongTermSignal = ({
         afterGames:
             after.length,
 
-        beforeYears,
+        priorSeasonCount,
 
-        afterYears,
+        futureSeasonCount,
+
+        currentSeasonBeforeGames:
+            includeCurrentBefore
+                ? currentSeasonBefore.length
+                : 0,
+
+        currentSeasonAfterGames:
+            includeCurrentAfter
+                ? currentSeasonAfter.length
+                : 0,
+
+        includedCurrentBefore:
+            includeCurrentBefore,
+
+        includedCurrentAfter:
+            includeCurrentAfter,
 
         beforeRate,
 
@@ -2137,19 +2373,11 @@ const buildLongTermReason = (
         );
 
 
-    const beforeSeasonWord =
-        signal.beforeYears ===
-            1
-            ? 'season'
-            : 'seasons';
-
-
-    const afterSeasonWord =
-        signal.afterYears ===
-            1
-            ? 'season'
-            : 'seasons';
-
+    /*
+        Avoid describing these as simply "prior seasons"
+        and "following seasons" because a substantial
+        portion of the focal season may now be included.
+    */
 
     if (
         direction ===
@@ -2157,18 +2385,16 @@ const buildLongTermReason = (
     ) {
         return (
             `Long-term trajectory improved from ${beforeRecord} ` +
-            `across the prior ${signal.beforeYears} ${beforeSeasonWord} ` +
-            `to ${afterRecord} across the following ` +
-            `${signal.afterYears} ${afterSeasonWord}.`
+            `across the broader period before this game to ` +
+            `${afterRecord} across the broader period afterward.`
         );
     }
 
 
     return (
         `Long-term trajectory fell from ${beforeRecord} ` +
-        `across the prior ${signal.beforeYears} ${beforeSeasonWord} ` +
-        `to ${afterRecord} across the following ` +
-        `${signal.afterYears} ${afterSeasonWord}.`
+        `across the broader period before this game to ` +
+        `${afterRecord} across the broader period afterward.`
     );
 };
 
@@ -2418,8 +2644,8 @@ const getDramaBonus =
     HISTORICAL PROJECTION / UPSET BONUS
     =====================================================
 
-    The normal matchup page already calculates projections
-    by summing each starter's Sleeper projection under the
+    The normal matchup page calculates projections by
+    summing each starter's Sleeper projection under the
     league's scoring settings.
 
     We do the same here.
@@ -2463,6 +2689,7 @@ const applyProjectionBonuses =
         const projectionPromises =
             uniqueWeekKeys.map(
                 async key => {
+
                     const [
                         year,
                         week
@@ -2752,10 +2979,6 @@ const getHistoricalProjectionWeek =
             /*
                 Historical projection availability should
                 never break the Impact page.
-
-                If Sleeper does not retain a particular
-                old week, that game simply receives no
-                projection bonus.
             */
 
             projectionCache.set(
@@ -3110,8 +3333,8 @@ const createImpactEntry = (
             impact.reasons,
 
         /*
-            Useful transparent data for a very large
-            long-term signal.
+            Transparent long-term context for diagnostics
+            or later UI expansion.
         */
 
         longTerm:
@@ -3138,15 +3361,35 @@ const createImpactEntry = (
                             .longTermSignal
                             .afterGames,
 
-                    beforeYears:
+                    priorSeasonCount:
                         impact
                             .longTermSignal
-                            .beforeYears,
+                            .priorSeasonCount,
 
-                    afterYears:
+                    futureSeasonCount:
                         impact
                             .longTermSignal
-                            .afterYears
+                            .futureSeasonCount,
+
+                    currentSeasonBeforeGames:
+                        impact
+                            .longTermSignal
+                            .currentSeasonBeforeGames,
+
+                    currentSeasonAfterGames:
+                        impact
+                            .longTermSignal
+                            .currentSeasonAfterGames,
+
+                    includedCurrentBefore:
+                        impact
+                            .longTermSignal
+                            .includedCurrentBefore,
+
+                    includedCurrentAfter:
+                        impact
+                            .longTermSignal
+                            .includedCurrentAfter
                 }
                 : null,
 
@@ -3565,12 +3808,6 @@ const selectReasons =
             );
         }
 
-
-        /*
-            Long-term trajectory normally arrives first,
-            so a major regime-change explanation will not
-            get pushed off the card.
-        */
 
         return unique.slice(
             0,
