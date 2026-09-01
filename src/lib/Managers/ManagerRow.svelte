@@ -41,35 +41,10 @@
         rebuild: 0
     };
 
-    const getScoreColor = (score, invert = false) => {
-        let value = Math.max(
-            0,
-            Math.min(100, score ?? 0)
-        );
-
-        if (invert) {
-            value = 100 - value;
-        }
-
-        // 0 = red, 100 = blue
-        const red = Math.round(
-            210 - value * 1.3
-        );
-
-        const green = Math.round(
-            70 + value * 0.45
-        );
-
-        const blue = Math.round(
-            70 + value * 1.6
-        );
-
-        return `rgba(${red}, ${green}, ${blue}, 0.18)`;
-    };
-
-    const getScoreBorderColor = (
+    const interpolateScoreColor = (
         score,
-        invert = false
+        invert = false,
+        alpha = 0.18
     ) => {
         let value = Math.max(
             0,
@@ -80,19 +55,59 @@
             value = 100 - value;
         }
 
-        const red = Math.round(
-            210 - value * 1.3
+        const t = value / 100;
+
+        // True red -> blue interpolation
+        const start = {
+            r: 225,
+            g: 95,
+            b: 95
+        };
+
+        const end = {
+            r: 85,
+            g: 125,
+            b: 225
+        };
+
+        const r = Math.round(
+            start.r +
+            (end.r - start.r) * t
         );
 
-        const green = Math.round(
-            70 + value * 0.45
+        const g = Math.round(
+            start.g +
+            (end.g - start.g) * t
         );
 
-        const blue = Math.round(
-            70 + value * 1.6
+        const b = Math.round(
+            start.b +
+            (end.b - start.b) * t
         );
 
-        return `rgba(${red}, ${green}, ${blue}, 0.65)`;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    const getScoreColor = (
+        score,
+        invert = false
+    ) => {
+        return interpolateScoreColor(
+            score,
+            invert,
+            0.18
+        );
+    };
+
+    const getScoreBorderColor = (
+        score,
+        invert = false
+    ) => {
+        return interpolateScoreColor(
+            score,
+            invert,
+            0.65
+        );
     };
 </script>
 
@@ -332,61 +347,63 @@
 
     <div class="spacer"></div>
 
-    <div class="info">
+    {#if !retired}
+        <div class="info">
 
-        <!-- Win Now -->
-        <div class="infoSlot">
-            <div
-                class="scoreCircle"
-                title="Win Now: {scores.winNow}"
-                style="
-                    background-color: {getScoreColor(scores.winNow)};
-                    border-color: {getScoreBorderColor(scores.winNow)};
-                "
-            >
-                {scores.winNow}
+            <!-- Win Now -->
+            <div class="infoSlot">
+                <div
+                    class="scoreCircle"
+                    title="Win Now: {scores.winNow}"
+                    style="
+                        background-color: {getScoreColor(scores.winNow)};
+                        border-color: {getScoreBorderColor(scores.winNow)};
+                    "
+                >
+                    {scores.winNow}
+                </div>
+
+                <div class="scoreLabel">
+                    WN
+                </div>
             </div>
 
-            <div class="scoreLabel">
-                WN
+            <!-- Dynasty -->
+            <div class="infoSlot">
+                <div
+                    class="scoreCircle"
+                    title="Dynasty: {scores.dynasty}"
+                    style="
+                        background-color: {getScoreColor(scores.dynasty)};
+                        border-color: {getScoreBorderColor(scores.dynasty)};
+                    "
+                >
+                    {scores.dynasty}
+                </div>
+
+                <div class="scoreLabel">
+                    DYN
+                </div>
             </div>
+
+            <!-- Rebuild -->
+            <div class="infoSlot">
+                <div
+                    class="scoreCircle"
+                    title="Rebuild: {scores.rebuild}"
+                    style="
+                        background-color: {getScoreColor(scores.rebuild, true)};
+                        border-color: {getScoreBorderColor(scores.rebuild, true)};
+                    "
+                >
+                    {scores.rebuild}
+                </div>
+
+                <div class="scoreLabel">
+                    REB
+                </div>
+            </div>
+
         </div>
-
-        <!-- Dynasty -->
-        <div class="infoSlot">
-            <div
-                class="scoreCircle"
-                title="Dynasty: {scores.dynasty}"
-                style="
-                    background-color: {getScoreColor(scores.dynasty)};
-                    border-color: {getScoreBorderColor(scores.dynasty)};
-                "
-            >
-                {scores.dynasty}
-            </div>
-
-            <div class="scoreLabel">
-                DYN
-            </div>
-        </div>
-
-        <!-- Rebuild -->
-        <div class="infoSlot">
-            <div
-                class="scoreCircle"
-                title="Rebuild: {scores.rebuild}"
-                style="
-                    background-color: {getScoreColor(scores.rebuild, true)};
-                    border-color: {getScoreBorderColor(scores.rebuild, true)};
-                "
-            >
-                {scores.rebuild}
-            </div>
-
-            <div class="scoreLabel">
-                REB
-            </div>
-        </div>
-
-    </div>
+    {/if}
 </div>
