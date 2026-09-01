@@ -164,6 +164,43 @@
         };
 
 
+    const comparisonText =
+        trade => {
+
+            const comparison =
+                trade
+                    ?.comparison;
+
+
+            if (!comparison) {
+                return '';
+            }
+
+
+            if (
+                comparison.label ===
+                    'EVEN'
+            ) {
+                return 'EVEN';
+            }
+
+
+            if (
+                comparison
+                    .leaderTeamNames
+                    ?.length
+            ) {
+                return (
+                    `${comparison.label} — ` +
+                    `${comparison.leaderTeamNames[0]}`
+                );
+            }
+
+
+            return comparison.label;
+        };
+
+
     const toggleTrade =
         tradeID => {
 
@@ -190,22 +227,41 @@
         </div>
 
         <h1>
-            Phase 4: Positional Normalization
+            Phase 5: What We Know Now
         </h1>
 
         <p>
-            Every player stint is now compared with active-rostered
-            players at the same position over the exact same
-            weeks. The 0–100 Position Score measures relative
-            performance. Positional Value combines that score
-            with the number of weeks the player actually remained
-            on the franchise's roster, creating an additive value
-            that can be summed through the lineage.
+            Every eligible trade side now receives a 0–100
+            What We Know Now score based on where its complete
+            realized Positional Value ranks against all other
+            eligible trade sides in league history. The lineage
+            still shows the raw points and player-level positional
+            normalization that produced the final return.
         </p>
     </section>
 
 
     <section class="summaryGrid">
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {diagnostics?.summary?.scoredTradeSides ?? 0}
+            </span>
+
+            <span class="summaryLabel">
+                Scored Trade Sides
+            </span>
+        </div>
+
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {diagnostics?.summary?.averageWhatWeKnowNow ?? 0}
+            </span>
+
+            <span class="summaryLabel">
+                Average WWKN Score
+            </span>
+        </div>
+
         <div class="summaryCard">
             <span class="summaryValue">
                 {(diagnostics?.summary?.positionalValueUnits ?? 0).toLocaleString(
@@ -440,14 +496,22 @@
                                 </span>
                             </div>
 
-                            <span
-                                class:eligible={trade.eligible}
-                                class:notEligible={!trade.eligible}
-                            >
-                                {trade.eligible
-                                    ? 'ELIGIBLE'
-                                    : 'TOO RECENT'}
-                            </span>
+                            <div class="tradeBadges">
+                                {#if trade.eligible && trade.comparison}
+                                    <span class="comparisonBadge">
+                                        {comparisonText(trade)}
+                                    </span>
+                                {/if}
+
+                                <span
+                                    class:eligible={trade.eligible}
+                                    class:notEligible={!trade.eligible}
+                                >
+                                    {trade.eligible
+                                        ? 'ELIGIBLE'
+                                        : 'TOO RECENT'}
+                                </span>
+                            </div>
                         </button>
 
 
@@ -458,6 +522,27 @@
                                         <h3>
                                             {participant.team.name}
                                         </h3>
+
+                                        {#if participant.whatWeKnowNow}
+                                            <div class="wwknBox">
+                                                <span class="wwknLabel">
+                                                    What We Know Now
+                                                </span>
+
+                                                <strong class="wwknScore">
+                                                    {participant.whatWeKnowNow.score}
+                                                    <span>/100</span>
+                                                </strong>
+
+                                                <span class="wwknMeta">
+                                                    Historical return rank
+                                                    {participant.whatWeKnowNow.historicalRank}
+                                                    of
+                                                    {participant.whatWeKnowNow.poolSize}
+                                                    trade sides
+                                                </span>
+                                            </div>
+                                        {/if}
 
                                         <div class="realizedBox">
                                             <span class="realizedLabel">
@@ -525,6 +610,27 @@
                                                 Received & What Happened
                                             </h4>
 
+                                            <div class="lineageLegend">
+                                                <span class="legendItem legend1">
+                                                    1 Direct
+                                                </span>
+                                                <span class="legendItem legend2">
+                                                    2 Second
+                                                </span>
+                                                <span class="legendItem legend3">
+                                                    3 Third
+                                                </span>
+                                                <span class="legendItem legend4">
+                                                    4 Fourth
+                                                </span>
+                                                <span class="legendItem legend5">
+                                                    5 Fifth
+                                                </span>
+                                                <span class="legendItem legendDeep">
+                                                    6+ Deeper
+                                                </span>
+                                            </div>
+
                                             {#if !participant.receivedLineages.length}
                                                 <div class="muted">
                                                     No tracked received assets.
@@ -551,20 +657,19 @@
 
     <section class="nextStep">
         <h2>
-            Phase 4 checkpoint
+            Phase 5 methodology
         </h2>
 
         <p>
-            The important test now is whether the normalized
-            ordering looks sensible. A player's Position Score
-            is his percentile among same-position active-rostered
-            players over the exact ownership weeks. Positional
-            Value equals Position Score / 100 × rostered weeks,
-            so it can be summed through long descendant trees.
-            Once those values look sane, the next phase can
-            normalize complete trade-side returns against all
-            other eligible trade sides and produce the final
-            What We Know Now score.
+            The What We Know Now score is the historical
+            percentile of a complete trade side's Positional
+            Value among all eligible trade sides. Scores are
+            independent rather than zero-sum. Comparative labels
+            use score gaps: 0–5 EVEN, over 5–15 SLIGHT EDGE,
+            over 15–30 CLEAR WIN, and over 30 LANDSLIDE.
+            Lineage shading shows how far each asset sits from
+            the original trade: blue, green, yellow, orange,
+            red, then white for level six and beyond.
         </p>
     </section>
 </div>
@@ -611,7 +716,7 @@
         display: grid;
         grid-template-columns:
             repeat(
-                9,
+                11,
                 minmax(
                     0,
                     1fr
@@ -699,6 +804,114 @@
         text-transform: uppercase;
         letter-spacing: 0.05em;
         opacity: 0.7;
+    }
+
+
+    .tradeBadges {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 7px;
+        flex-wrap: wrap;
+    }
+
+
+    .comparisonBadge {
+        border: 1px solid rgba(127, 127, 127, 0.45);
+        border-radius: 999px;
+        padding: 5px 8px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.035em;
+        white-space: nowrap;
+    }
+
+
+    .wwknBox {
+        border: 1px solid rgba(127, 127, 127, 0.32);
+        border-radius: 10px;
+        padding: 12px;
+        margin: 8px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        background: rgba(127, 127, 127, 0.1);
+    }
+
+
+    .wwknLabel {
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.065em;
+        opacity: 0.64;
+    }
+
+
+    .wwknScore {
+        font-size: 2rem;
+        line-height: 1.05;
+    }
+
+
+    .wwknScore span {
+        font-size: 0.95rem;
+        opacity: 0.6;
+    }
+
+
+    .wwknMeta {
+        margin-top: 3px;
+        font-size: 0.77rem;
+        opacity: 0.68;
+    }
+
+
+    .lineageLegend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin: 0 0 8px;
+    }
+
+
+    .legendItem {
+        border: 1px solid rgba(80, 80, 80, 0.18);
+        border-radius: 999px;
+        padding: 3px 7px;
+        color: #1f2937;
+        font-size: 0.66rem;
+        font-weight: 700;
+    }
+
+
+    .legend1 {
+        background: #e8f2ff;
+    }
+
+
+    .legend2 {
+        background: #e9f8ed;
+    }
+
+
+    .legend3 {
+        background: #fff8d9;
+    }
+
+
+    .legend4 {
+        background: #fff0df;
+    }
+
+
+    .legend5 {
+        background: #fde8e8;
+    }
+
+
+    .legendDeep {
+        background: #ffffff;
     }
 
 
