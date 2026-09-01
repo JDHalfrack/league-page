@@ -190,21 +190,47 @@
         </div>
 
         <h1>
-            Phase 3: Realized Roster Points
+            Phase 4: Positional Normalization
         </h1>
 
         <p>
-            Every lineage now carries the fantasy points
-            actually scored while each player was on that
-            franchise's roster. Starter and bench status do
-            not matter. Drops stop the points, retrades stop
-            that player and continue into the return, and a
-            used draft pick becomes the selected player.
+            Every player stint is now compared with active-rostered
+            players at the same position over the exact same
+            weeks. The 0–100 Position Score measures relative
+            performance. Positional Value combines that score
+            with the number of weeks the player actually remained
+            on the franchise's roster, creating an additive value
+            that can be summed through the lineage.
         </p>
     </section>
 
 
     <section class="summaryGrid">
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {(diagnostics?.summary?.positionalValueUnits ?? 0).toLocaleString(
+                    'en-US',
+                    {
+                        maximumFractionDigits: 2
+                    }
+                )}
+            </span>
+
+            <span class="summaryLabel">
+                Positional Value Units
+            </span>
+        </div>
+
+        <div class="summaryCard">
+            <span class="summaryValue">
+                {diagnostics?.summary?.normalizedPlayerStints ?? 0}
+            </span>
+
+            <span class="summaryLabel">
+                Normalized Player Stints
+            </span>
+        </div>
+
         <div class="summaryCard">
             <span class="summaryValue">
                 {(diagnostics?.summary?.realizedRosterPoints ?? 0).toLocaleString(
@@ -291,9 +317,9 @@
 
                 <p>
                     Historical matchup coverage remains
-                    visible so rostered-point totals can be
-                    audited against Sleeper's archived
-                    players_points data.
+                    visible because Phase 4 uses each week's
+                    Sleeper matchup `players` list as the
+                    active-rostered positional comparison pool.
                 </p>
             </div>
         </div>
@@ -448,12 +474,30 @@
                                                 pts
                                             </strong>
 
+                                            <div class="valueLine">
+                                                <span>
+                                                    Positional Value
+                                                </span>
+
+                                                <strong>
+                                                    {(participant.realizedProduction?.positionalValue ?? 0).toLocaleString(
+                                                        'en-US',
+                                                        {
+                                                            maximumFractionDigits: 3
+                                                        }
+                                                    )}
+                                                </strong>
+                                            </div>
+
                                             <span class="realizedMeta">
                                                 {participant.realizedProduction?.rosteredWeeks ?? 0}
                                                 rostered player-weeks
                                                 ·
                                                 {participant.realizedProduction?.uniquePlayers ?? 0}
                                                 players
+                                                ·
+                                                {participant.realizedProduction?.normalizedPlayerStints ?? 0}
+                                                normalized stints
                                             </span>
                                         </div>
 
@@ -507,19 +551,20 @@
 
     <section class="nextStep">
         <h2>
-            Phase 3 checkpoint
+            Phase 4 checkpoint
         </h2>
 
         <p>
-            The important test now is the point accounting.
-            Each player node should show only the fantasy
-            points scored during that specific ownership
-            stint. A retrade ends that player's point window
-            and begins the descendant assets. The franchise
-            total is the sum of every player node in that
-            received lineage. Positional weighting and the
-            final What We Know Now rating remain deliberately
-            outside this phase.
+            The important test now is whether the normalized
+            ordering looks sensible. A player's Position Score
+            is his percentile among same-position active-rostered
+            players over the exact ownership weeks. Positional
+            Value equals Position Score / 100 × rostered weeks,
+            so it can be summed through long descendant trees.
+            Once those values look sane, the next phase can
+            normalize complete trade-side returns against all
+            other eligible trade sides and produce the final
+            What We Know Now score.
         </p>
     </section>
 </div>
@@ -566,7 +611,7 @@
         display: grid;
         grid-template-columns:
             repeat(
-                7,
+                9,
                 minmax(
                     0,
                     1fr
@@ -792,6 +837,28 @@
     .realizedValue {
         font-size: 1.55rem;
         line-height: 1.1;
+    }
+
+
+    .valueLine {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 5px;
+        padding-top: 5px;
+        border-top: 1px solid rgba(127, 127, 127, 0.18);
+    }
+
+
+    .valueLine span {
+        font-size: 0.76rem;
+        opacity: 0.72;
+    }
+
+
+    .valueLine strong {
+        font-size: 1.05rem;
     }
 
 
