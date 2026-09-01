@@ -33,6 +33,7 @@
                 ?.users
                 ?.[id];
 
+
         return (
             user?.display_name ||
             user?.user_name ||
@@ -43,23 +44,8 @@
 
     /*
         ==================================================
-        COMPACT LEDGER ENTRY
+        COMPACT LEDGER
         ==================================================
-
-        The full fact engine has a lot of useful internal
-        bookkeeping.
-
-        Groq does not need all of it.
-
-        It DOES need:
-          - exact date
-          - exact winner
-          - exact score
-          - exact series state before
-          - exact series state after
-
-        This is enough to discuss historical evolution
-        without ever doing arithmetic.
     */
 
     const compactLedger =
@@ -76,14 +62,11 @@
 
         return ledger.map(
             entry => ({
-                meetingNumber:
+                n:
                     entry.meetingNumber,
 
-                label:
+                when:
                     entry.label,
-
-                type:
-                    entry.type,
 
                 winner:
                     entry.winner,
@@ -97,10 +80,10 @@
                 margin:
                     entry.margin,
 
-                seriesBefore:
+                before:
                     entry.seriesBefore,
 
-                seriesAfter:
+                after:
                     entry.seriesAfter
             })
         );
@@ -109,7 +92,7 @@
 
     /*
         ==================================================
-        COMPACT STREAK
+        COMPACT CURRENT STREAK
         ==================================================
     */
 
@@ -149,20 +132,17 @@
             mostRecent:
                 streak.mostRecent,
 
-            firstWinInStreak:
-                streak.firstWinInStreak,
-
-            mostRecentWinInStreak:
-                streak.mostRecentWinInStreak,
-
-            recordImmediatelyBeforeStreak:
-                streak.recordImmediatelyBeforeStreakText,
+            recordBefore:
+                streak
+                    .recordImmediatelyBeforeStreakText,
 
             currentRecord:
-                streak.currentRecordText,
+                streak
+                    .currentRecordText,
 
-            verifiedEffect:
-                streak.verifiedEffect
+            effect:
+                streak
+                    .verifiedEffect
         };
     };
 
@@ -192,75 +172,198 @@
                 streak.start,
 
             end:
-                streak.end,
-
-            firstGame:
-                streak.firstGame ||
-                null,
-
-            lastGame:
-                streak.lastGame ||
-                null
+                streak.end
         };
     };
 
 
     /*
         ==================================================
-        RECENT WINDOW
+        COMPACT EXTREME GAME
         ==================================================
-
-        We only need the verified record plus the exact
-        meetings for the shorter windows.
-
-        The last-10 raw list is redundant with the main
-        chronological ledger, so it is omitted.
     */
 
-    const compactRecentWindow =
-        (
-            window,
-            includeGames = false
-        ) => {
+    const compactExtreme =
+        game => {
 
-        if (!window) {
+        if (!game) {
             return null;
         }
 
 
-        const result = {
-            actualGames:
-                window.actualGames,
+        return {
+            when:
+                game.label,
 
-            record:
-                window.recordText
+            winner:
+                game.winner,
+
+            score:
+                game.score,
+
+            margin:
+                game.margin,
+
+            total:
+                game.combinedScore
         };
-
-
-        if (
-            includeGames &&
-            Array.isArray(
-                window.meetings
-            )
-        ) {
-            result.meetings =
-                window.meetings;
-        }
-
-
-        return result;
     };
 
 
     /*
         ==================================================
-        SEASON HISTORY
+        COMPACT INDIVIDUAL SCORING
         ==================================================
+    */
 
-        The full structure repeats every game's details.
+    const compactIndividual =
+        stats => {
 
-        Those exact games already live in the ledger, so
-        here Groq only needs the season summary.
+        if (!stats) {
+            return null;
+        }
+
+
+        return {
+            average:
+                stats.averageScore,
+
+            high:
+                stats.highestScore,
+
+            low:
+                stats.lowestScore,
+
+            atLeast150:
+                stats.gamesAtOrAbove150,
+
+            atLeast175:
+                stats.gamesAtOrAbove175,
+
+            atLeast200:
+                stats.gamesAtOrAbove200,
+
+            below100:
+                stats.gamesBelow100
+        };
+    };
+
+
+    /*
+        ==================================================
+        COMPACT SCORING
+        ==================================================
+    */
+
+    const compactScoring = (
+        factSheet,
+        managerOne,
+        managerTwo
+    ) => {
+        const regular =
+            factSheet
+                ?.scoring
+                ?.regularSeason;
+
+
+        const playoffs =
+            factSheet
+                ?.scoring
+                ?.playoffs;
+
+
+        return {
+            regularSeason: {
+                [managerOne]:
+                    compactIndividual(
+                        regular
+                            ?.[managerOne]
+                    ),
+
+                [managerTwo]:
+                    compactIndividual(
+                        regular
+                            ?.[managerTwo]
+                    ),
+
+                averageMargin:
+                    regular
+                        ?.averageMargin,
+
+                medianMargin:
+                    regular
+                        ?.medianMargin,
+
+                closest:
+                    compactExtreme(
+                        regular
+                            ?.extremes
+                            ?.closest
+                    ),
+
+                biggestBlowout:
+                    compactExtreme(
+                        regular
+                            ?.extremes
+                            ?.biggestBlowout
+                    ),
+
+                highestCombined:
+                    compactExtreme(
+                        regular
+                            ?.extremes
+                            ?.highestCombinedScore
+                    ),
+
+                lowestCombined:
+                    compactExtreme(
+                        regular
+                            ?.extremes
+                            ?.lowestCombinedScore
+                    )
+            },
+
+
+            playoffs:
+                factSheet
+                    ?.meetingCounts
+                    ?.playoffs
+                    ? {
+                        [managerOne]:
+                            compactIndividual(
+                                playoffs
+                                    ?.[managerOne]
+                            ),
+
+                        [managerTwo]:
+                            compactIndividual(
+                                playoffs
+                                    ?.[managerTwo]
+                            ),
+
+                        closest:
+                            compactExtreme(
+                                playoffs
+                                    ?.extremes
+                                    ?.closest
+                            ),
+
+                        biggestBlowout:
+                            compactExtreme(
+                                playoffs
+                                    ?.extremes
+                                    ?.biggestBlowout
+                            )
+                    }
+                    : null
+        };
+    };
+
+
+    /*
+        ==================================================
+        COMPACT SEASONS
+        ==================================================
     */
 
     const compactSeasons =
@@ -295,24 +398,95 @@
 
     /*
         ==================================================
-        BUILD WRITER DOSSIER
+        COMPACT LEAD CHANGES
         ==================================================
-
-        This is the important change.
-
-        buildRivalryFactSheet() can remain enormous and rich.
-
-        But we transmit ONE non-redundant representation
-        of the useful facts to Groq.
     */
 
-    const buildWriterDossier =
-        factSheet => {
+    const compactLeadChanges =
+        changes => {
 
+        if (
+            !Array.isArray(
+                changes
+            )
+        ) {
+            return [];
+        }
+
+
+        return changes.map(
+            item => ({
+                when:
+                    item.afterMeeting,
+
+                leader:
+                    item.leader,
+
+                record:
+                    item.record
+            })
+        );
+    };
+
+
+    /*
+        ==================================================
+        COMPACT CAREER CONTEXT
+        ==================================================
+    */
+
+    const compactCareer =
+        career => {
+
+        if (!career) {
+            return null;
+        }
+
+
+        return {
+            games:
+                career.games,
+
+            wins:
+                career.wins,
+
+            losses:
+                career.losses,
+
+            ties:
+                career.ties,
+
+            winPct:
+                career.winPercentage,
+
+            pointsPerGame:
+                career
+                    .fantasyPointsPerGame
+        };
+    };
+
+
+    /*
+        ==================================================
+        BUILD LEAN WRITER DOSSIER
+        ==================================================
+
+        The local fact engine can remain huge.
+
+        This is intentionally SMALL enough to stay well
+        below Groq's 8K-token-per-minute free-tier ceiling.
+        ==================================================
+    */
+
+    const buildWriterDossier = (
+        factSheet,
+        leagueContext
+    ) => {
         const managerOne =
             factSheet
                 ?.managers
                 ?.managerOne;
+
 
         const managerTwo =
             factSheet
@@ -322,197 +496,158 @@
 
         return {
             /*
-                ==========================================
-                BASIC IDENTITY
-                ==========================================
+                The new league-wide identity layer.
             */
 
-            managers:
-                factSheet.managers,
+            leagueContext:
+                leagueContext ||
+                null,
 
 
             /*
-                ==========================================
-                CURRENT SERIES
-                ==========================================
+                Current facts.
             */
 
-            meetingCounts:
-                factSheet.meetingCounts,
+            meetings:
+                factSheet
+                    ?.meetingCounts,
 
-            currentRecords:
-                factSheet.currentRecords,
+            records: {
+                regularSeason:
+                    factSheet
+                        ?.currentRecords
+                        ?.regularSeason
+                        ?.statement,
 
-            firstAndMostRecent:
-                factSheet.firstAndMostRecent,
+                playoffs:
+                    factSheet
+                        ?.currentRecords
+                        ?.playoffs
+                        ?.statement,
+
+                combined:
+                    factSheet
+                        ?.currentRecords
+                        ?.combined
+                        ?.statement
+            },
+
+
+            firstAndLatest:
+                factSheet
+                    ?.firstAndMostRecent,
 
 
             /*
-                ==========================================
-                STREAKS
-                ==========================================
+                Streaks.
             */
 
             streaks: {
-                regularSeason: {
-                    current:
-                        compactCurrentStreak(
+                regularCurrent:
+                    compactCurrentStreak(
+                        factSheet
+                            ?.streaks
+                            ?.regularSeason
+                            ?.current
+                    ),
+
+                regularLongest: {
+                    [managerOne]:
+                        compactLongest(
                             factSheet
                                 ?.streaks
                                 ?.regularSeason
-                                ?.current
+                                ?.longestByManager
+                                ?.[managerOne]
                         ),
 
-                    longest: {
-                        [managerOne]:
-                            compactLongest(
-                                factSheet
-                                    ?.streaks
-                                    ?.regularSeason
-                                    ?.longestByManager
-                                    ?.[managerOne]
-                            ),
-
-                        [managerTwo]:
-                            compactLongest(
-                                factSheet
-                                    ?.streaks
-                                    ?.regularSeason
-                                    ?.longestByManager
-                                    ?.[managerTwo]
-                            )
-                    }
-                },
-
-
-                playoffs: {
-                    current:
-                        compactCurrentStreak(
+                    [managerTwo]:
+                        compactLongest(
                             factSheet
                                 ?.streaks
-                                ?.playoffs
-                                ?.current
-                        ),
+                                ?.regularSeason
+                                ?.longestByManager
+                                ?.[managerTwo]
+                        )
+                },
 
-                    longest: {
-                        [managerOne]:
-                            compactLongest(
-                                factSheet
-                                    ?.streaks
-                                    ?.playoffs
-                                    ?.longestByManager
-                                    ?.[managerOne]
-                            ),
-
-                        [managerTwo]:
-                            compactLongest(
-                                factSheet
-                                    ?.streaks
-                                    ?.playoffs
-                                    ?.longestByManager
-                                    ?.[managerTwo]
-                            )
-                    }
-                }
+                playoffCurrent:
+                    compactCurrentStreak(
+                        factSheet
+                            ?.streaks
+                            ?.playoffs
+                            ?.current
+                    )
             },
 
 
             /*
-                ==========================================
-                RECENT HISTORY
-                ==========================================
+                Recent record only.
+
+                The exact games already exist in chronology,
+                so no duplicate game arrays here.
             */
 
-            recentRegularSeason: {
+            recent: {
                 last3:
-                    compactRecentWindow(
-                        factSheet
-                            ?.recentRegularSeason
-                            ?.last3,
-                        true
-                    ),
+                    factSheet
+                        ?.recentRegularSeason
+                        ?.last3
+                        ?.recordText,
 
                 last5:
-                    compactRecentWindow(
-                        factSheet
-                            ?.recentRegularSeason
-                            ?.last5,
-                        true
-                    ),
+                    factSheet
+                        ?.recentRegularSeason
+                        ?.last5
+                        ?.recordText,
 
                 last10:
-                    compactRecentWindow(
-                        factSheet
-                            ?.recentRegularSeason
-                            ?.last10,
-                        false
-                    )
+                    factSheet
+                        ?.recentRegularSeason
+                        ?.last10
+                        ?.recordText
             },
 
-
-            /*
-                ==========================================
-                SCORING
-                ==========================================
-            */
 
             scoring:
-                factSheet.scoring,
+                compactScoring(
+                    factSheet,
+                    managerOne,
+                    managerTwo
+                ),
+
+
+            seasons:
+                compactSeasons(
+                    factSheet
+                        ?.seasonBySeason
+                        ?.regularSeason
+                ),
+
+
+            leadChanges:
+                compactLeadChanges(
+                    factSheet
+                        ?.seriesLeadHistory
+                        ?.regularSeason
+                ),
+
+
+            maximumSeriesLead:
+                factSheet
+                    ?.seriesLeadHistory
+                    ?.maximumRegularSeasonLead,
 
 
             /*
-                ==========================================
-                SEASON-BY-SEASON SUMMARY
-                ==========================================
-            */
+                ONE authoritative chronology.
 
-            seasonBySeason: {
-                regularSeason:
-                    compactSeasons(
-                        factSheet
-                            ?.seasonBySeason
-                            ?.regularSeason
-                    ),
-
-                playoffs:
-                    compactSeasons(
-                        factSheet
-                            ?.seasonBySeason
-                            ?.playoffs
-                    )
-            },
-
-
-            /*
-                ==========================================
-                SERIES LEAD CHANGES
-                ==========================================
-            */
-
-            seriesLeadHistory:
-                factSheet.seriesLeadHistory,
-
-
-            /*
-                ==========================================
-                EXACT HISTORICAL LEDGER
-
-                ONE regular-season copy.
-                ONE playoff copy.
-
-                No combined duplicate.
-                ==========================================
+                This is the critical safety net for any
+                historical prose.
             */
 
             chronology: {
-                explanation:
-                    (
-                        'These are chronological MEETINGS. ' +
-                        'Adjacent entries are not necessarily adjacent NFL weeks. ' +
-                        'seriesBefore and seriesAfter are authoritative.'
-                    ),
-
-                regularSeason:
+                regular:
                     compactLedger(
                         factSheet
                             ?.chronology
@@ -528,24 +663,26 @@
             },
 
 
-            /*
-                ==========================================
-                TRADES
-                ==========================================
-            */
-
             trades:
-                factSheet.trades,
+                factSheet
+                    ?.trades,
 
 
-            /*
-                ==========================================
-                CAREER CONTEXT
-                ==========================================
-            */
+            career: {
+                [managerOne]:
+                    compactCareer(
+                        factSheet
+                            ?.overallCareerContext
+                            ?.[managerOne]
+                    ),
 
-            overallCareerContext:
-                factSheet.overallCareerContext
+                [managerTwo]:
+                    compactCareer(
+                        factSheet
+                            ?.overallCareerContext
+                            ?.[managerTwo]
+                    )
+            }
         };
     };
 
@@ -562,15 +699,13 @@
                 playerOne
             );
 
+
         const managerTwoName =
             getManagerName(
                 playerTwo
             );
 
 
-        /*
-            Build the COMPLETE historical analysis first.
-        */
         const fullFactSheet =
             buildRivalryFactSheet({
                 rivalry,
@@ -587,12 +722,11 @@
             });
 
 
-        /*
-            Then distill it for the writer.
-        */
         const writerDossier =
             buildWriterDossier(
-                fullFactSheet
+                fullFactSheet,
+                rivalry
+                    ?.leagueContext
             );
 
 
@@ -611,11 +745,8 @@
 
     /*
         ==================================================
-        READ ERROR RESPONSE
+        READ RESPONSE
         ==================================================
-
-        If Vercel/Groq ever returns HTML/plain text instead
-        of JSON, do not hide the HTTP status anymore.
     */
 
     const readResponse =
@@ -642,34 +773,23 @@
 
 
         if (!response.ok) {
-            const suppliedError =
-                result?.error;
-
-
-            if (suppliedError) {
+            if (
+                result?.error
+            ) {
                 throw new Error(
-                    `${response.status}: ${suppliedError}`
+                    `${response.status}: ${result.error}`
                 );
             }
 
 
-            const shortText =
+            throw new Error(
                 text
                     ?.trim()
                     ?.slice(
                         0,
                         300
-                    );
-
-
-            throw new Error(
-                shortText
-                    ? (
-                        `${response.status}: ${shortText}`
-                    )
-                    : (
-                        `HTTP ${response.status}`
-                    )
+                    ) ||
+                `HTTP ${response.status}`
             );
         }
 
@@ -711,13 +831,6 @@
             '';
 
 
-        /*
-            Preserve the existing article while generating
-            Another Take.
-
-            Clear it only when we are automatically loading
-            a newly selected rivalry.
-        */
         if (automatic) {
             article =
                 null;
@@ -731,10 +844,6 @@
 
 
         try {
-            const payload =
-                buildPayload();
-
-
             const response =
                 await fetch(
                     '/api/ai/rivalry',
@@ -749,7 +858,7 @@
 
                         body:
                             JSON.stringify(
-                                payload
+                                buildPayload()
                             )
                     }
                 );
@@ -812,7 +921,7 @@
 
     /*
         ==================================================
-        AUTOMATIC GENERATION KEY
+        AUTO GENERATION KEY
         ==================================================
     */
 
@@ -899,13 +1008,11 @@
         background-color: var(--rivalryBack);
     }
 
-
     h3 {
         text-align: center;
         font-size: 1.9em;
         margin: 0 0 0.35em;
     }
-
 
     .intro {
         max-width: 650px;
@@ -918,7 +1025,6 @@
         font-size: 0.9em;
     }
 
-
     .writing {
         width: 85%;
         max-width: 550px;
@@ -928,7 +1034,6 @@
         color: #888;
         font-style: italic;
     }
-
 
     .article {
         display: block;
@@ -944,7 +1049,6 @@
         line-height: 1.7;
         white-space: normal;
     }
-
 
     .headline {
         display: block;
@@ -962,7 +1066,6 @@
         overflow-wrap: anywhere;
     }
 
-
     .paragraph {
         display: block;
         width: 100%;
@@ -976,31 +1079,23 @@
         overflow-wrap: break-word;
     }
 
-
     .paragraph:last-child {
         margin-bottom: 0;
     }
 
-
     .byline {
         display: block;
-        height: auto;
-        max-height: none;
-        overflow: visible;
         margin-top: 1.75em;
         text-align: center;
         font-size: 0.75em;
         color: #999;
     }
 
-
     .buttonHolder {
         display: block;
-        height: auto;
         margin-top: 1.75em;
         text-align: center;
     }
-
 
     button {
         border: 1px solid #888;
@@ -1012,7 +1107,6 @@
         cursor: pointer;
     }
 
-
     button:hover:not(:disabled) {
         background-color:
             rgba(
@@ -1023,23 +1117,16 @@
             );
     }
 
-
     button:disabled {
         opacity: 0.55;
         cursor: default;
     }
 
-
     .error {
-        display: block;
-        height: auto;
-        max-height: none;
-        overflow: visible;
         text-align: center;
         margin: 1.5em auto 0;
         color: #c55;
     }
-
 
     @media (
         max-width: 650px
@@ -1049,17 +1136,14 @@
             padding: 1.5em 1em;
         }
 
-
         h3 {
             font-size: 1.6em;
         }
-
 
         .article {
             width: 100%;
             padding: 0;
         }
-
 
         .headline {
             font-size: 1.3em;
