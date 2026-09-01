@@ -67,6 +67,11 @@ export const tabs = [
                 dest: '/records',
             },
             {
+                icon: 'bolt',
+                label: 'Impactful Games',
+                dest: '/impact',
+            },
+            {
                 icon: 'history_edu',
                 label: 'Constitution',
                 dest: '/constitution',
