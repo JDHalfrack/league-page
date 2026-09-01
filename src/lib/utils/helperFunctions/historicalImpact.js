@@ -42,6 +42,9 @@ import {
     Then:
         if the game clears the impact threshold,
         add a small DRAMA BONUS for close games.
+
+    The top games are displayed in IMPACT RANK order,
+    strongest first.
     =====================================================
 */
 
@@ -242,7 +245,13 @@ const buildHistoricallyImpactfulGames =
 
 
         /*
-            Select the strongest 50 by FINAL score.
+            Select AND DISPLAY the strongest 50
+            by final Impact score.
+
+            #1 = greatest historical impact.
+
+            Unlike the first version, we do NOT re-sort
+            these chronologically afterward.
         */
 
         const positiveTop =
@@ -265,22 +274,6 @@ const buildHistoricallyImpactfulGames =
                     0,
                     TOP_COUNT
                 );
-
-
-        /*
-            But DISPLAY those selected games in
-            chronological order.
-
-            Oldest -> newest.
-        */
-
-        positiveTop.sort(
-            compareChronological
-        );
-
-        negativeTop.sort(
-            compareChronological
-        );
 
 
         return {
@@ -500,6 +493,11 @@ const loadAllHistoricalGames =
                     .previous_league_id;
         }
 
+
+        /*
+            Manager histories still need chronological game
+            order in order to calculate before/after impact.
+        */
 
         games.sort(
             compareChronological
@@ -947,10 +945,8 @@ const createGame = ({
 
 
     /*
-        Ties are valid historical games, but there is no
-        positive-win / negative-loss Impact direction.
-
-        Keep them out of this first Impact implementation.
+        Ties have no positive-win / negative-loss
+        direction in this version.
     */
 
     if (
@@ -1580,10 +1576,6 @@ const calculateImpact = ({
         =================================================
         PLAYOFF LEVERAGE
         =================================================
-
-        This does not create Impact by itself, but gives
-        already meaningful trajectory games additional
-        historical significance.
     */
 
     if (
@@ -1650,8 +1642,11 @@ const calculateImpact = ({
         DRAMA BONUS
         =================================================
 
-        ONLY apply after the game has independently
-        qualified as historically impactful.
+        This remains a positive MAGNITUDE internally for
+        both columns.
+
+        Negative signs are purely presentation: -84 means
+        an 84-point negative historical impact.
     */
 
     const dramaBonus =
@@ -1782,11 +1777,6 @@ const calculateWindowSignal = ({
             rawDifference
         );
 
-
-    /*
-        Confidence prevents 1-game samples on either side
-        from receiving full credit.
-    */
 
     const evidence =
         Math.min(
@@ -2199,7 +2189,7 @@ const countWins =
         return games.filter(
             game =>
                 game.result ===
-                'W'
+                    'W'
         ).length;
     };
 
@@ -2436,10 +2426,6 @@ const selectReasons =
         }
 
 
-        /*
-            Quick explanation, not an essay.
-        */
-
         return unique.slice(
             0,
             4
@@ -2471,6 +2457,11 @@ const compareImpactStrength = (
     );
 };
 
+
+/*
+    Chronological sorting remains necessary internally
+    when constructing each manager's history.
+*/
 
 const compareChronological = (
     a,
