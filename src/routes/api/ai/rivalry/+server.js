@@ -59,6 +59,41 @@ const shuffle = input => {
 };
 
 
+/*
+    =====================================================
+    OUTPUT NORMALIZATION
+    =====================================================
+
+    "playoff" is the house style.
+
+    This is safe editorial normalization, not factual
+    rewriting.
+*/
+
+const normalizeHouseStyle =
+    text => {
+
+        return String(
+            text ||
+            ''
+        )
+            .replace(
+                /\bplay[\s-]offs?\b/gi,
+                match => {
+                    const plural =
+                        /s$/i.test(
+                            match
+                        );
+
+                    return plural
+                        ? 'playoffs'
+                        : 'playoff';
+                }
+            )
+            .trim();
+    };
+
+
 const cleanText = text => {
     return String(
         text ||
@@ -133,19 +168,20 @@ const parseArticle = text => {
 
 
     const headline =
-        String(
-            parsed.headline ||
-            ''
-        )
-            .replace(
-                /\*\*/g,
+        normalizeHouseStyle(
+            String(
+                parsed.headline ||
                 ''
             )
-            .replace(
-                /^#+\s*/,
-                ''
-            )
-            .trim();
+                .replace(
+                    /\*\*/g,
+                    ''
+                )
+                .replace(
+                    /^#+\s*/,
+                    ''
+                )
+        );
 
 
     let paragraphs =
@@ -179,15 +215,16 @@ const parseArticle = text => {
             paragraphs
                 .map(
                     p =>
-                        String(
-                            p ||
-                            ''
-                        )
-                            .replace(
-                                /\*\*/g,
+                        normalizeHouseStyle(
+                            String(
+                                p ||
                                 ''
                             )
-                            .trim()
+                                .replace(
+                                    /\*\*/g,
+                                    ''
+                                )
+                        )
                 )
                 .filter(Boolean);
     }
@@ -509,163 +546,223 @@ FACT SAFETY
 
 Use only supplied facts.
 
-Never invent games, scores, records, streaks, championships, motives, quotes, psychology, or timing between games.
+Never invent:
+- games
+- scores
+- records
+- streaks
+- championships
+- motives
+- quotes
+- psychology
+- fan reactions
+- importance to league standings
+- timing between meetings
 
-0-0 is unplayed.
+0-0 means unplayed.
 
-Regular season and playoffs are separate unless an explicit combined record is supplied.
+Regular season and playoffs are different categories unless an explicit combined record is supplied.
 
 Adjacent chronology entries are consecutive RIVALRY MEETINGS, not necessarily consecutive football weeks.
 
-Never invent "the following week," "one week later," or similar timing.
+Never invent "the following week," "the next week," or similar timing.
 
 Do not perform historical arithmetic.
 
 
-RIVALRY IDENTITY
+RIVALRY IDENTITY IS GUIDANCE, NOT COPY
 
-factSheet.rivalryIdentity is authoritative.
+factSheet.rivalryIdentity exists to help you choose the tone of the opening.
 
-size:
+Do NOT discuss:
+- a frequency spectrum
+- a ranking spectrum
+- a middle tier
+- a middle category
+- an internal classification
+- a frequency class
+- a cadence class
+- a size tier
+- where the rivalry "sits" in a classification system
 
-BIG =
-one of the four most-played regular-season pairings between managers who are CURRENTLY active in the league.
+Never write anything resembling:
+"the rivalry sits in the middle of the frequency spectrum."
 
-SMALL =
-one of the four least-played established regular-season pairings between managers who are CURRENTLY active.
+If no importanceDescription is supplied, DO NOT discuss league-wide importance at all.
 
-NORMAL =
-between those groups.
+If no familiarityDescription is supplied, DO NOT make frequency itself a talking point.
 
-NEW =
-their first-ever regular-season meeting occurred last season.
-
-UNRANKED =
-the pairing is not eligible for current-manager league rankings.
-
-Historical pairings involving retired managers are NOT part of the BIG/SMALL ranking pool.
-
-
-FREQUENCY
-
-frequency describes how much total familiarity this pairing has built relative to completed shared seasons.
-
-Use the supplied description.
-
-Do not calculate or state a games-per-season average.
+Translate supplied noteworthy context into natural prose rather than explaining the application's classification system.
 
 
 CADENCE
 
-cadence tells you whether they actually met during the completed seasons they shared.
+cadence controls season-to-season wording.
 
-EVERY_COMPLETED_SEASON =
-they truly met in every completed shared season.
+EVERY_COMPLETED_SEASON:
+you may say they have met every completed season they shared.
 
-NEARLY_EVERY_SEASON =
-they missed exactly some history; do not say literally every season.
+NEARLY_EVERY_SEASON:
+you may say they have met often or in nearly every shared season, but NEVER literally every season.
 
-INTERMITTENT =
-they missed each other during multiple completed seasons.
+INTERMITTENT:
+their meetings have skipped multiple seasons. Do not portray them as an annual fixture.
 
-RARE =
-they missed each other more often than they met.
+RARE:
+they have missed each other more often than they have met.
 
-UNKNOWN =
-do not characterize season-to-season cadence.
+UNKNOWN:
+do not discuss season-to-season cadence.
 
-
-HARD CADENCE RULE
-
-NEVER write:
-
-"they meet each season"
-"they face each other every year"
-"an annual matchup"
-"a yearly fixture"
-"every season brings another meeting"
-"they always find each other on the schedule"
-
-unless cadence is exactly EVERY_COMPLETED_SEASON.
-
-If cadence is INTERMITTENT, the writing must acknowledge that the matchup has NOT happened consistently every season.
-
-Do not convert total matchup count into an assumption about season-to-season regularity.
-
-
-FREQUENCY WORDING
-
-Describe frequency with WORDS.
-
-Do not write:
-- X meetings in Y seasons
-- X times over Y years
-- an average of X games per year
-- twice per season
-- once per year
-- any arithmetic explaining the classification
-
-Actual historical meeting totals may be mentioned when relevant to the record itself, but do not use numbers to explain frequency.
+Never infer cadence from a total matchup count.
 
 
 OPENING
 
 Give the rivalry some life before listing statistics.
 
-The first 1-3 sentences should establish what KIND of rivalry this actually is.
+The opening should feel specific to the supplied history.
 
-For BIG:
-you may emphasize that this pairing has accumulated unusually extensive history among current managers.
+Useful approaches include:
+- familiarity when the supplied identity supports it
+- limited history when supplied identity supports it
+- strange or contrasting results
+- repeated swings in the series
+- scoring extremes
+- understated humor
+- a genuinely interesting first-meeting or recent-history angle
 
-For SMALL:
-emphasize that the history is relatively limited.
+Do NOT invent emotional escalation.
 
-For NEW:
-the history has only just begun.
+One high-scoring game is NOT evidence that:
+- the rivalry was getting more intense
+- tensions were rising
+- the rivalry was heating up
+- either manager suddenly cared more
 
-For INTERMITTENT:
-do NOT portray the matchup as a permanent annual fixture. It may have history without being constant.
+Do not invent spectators or fan response.
 
-For EXTREMELY_FREQUENT plus EVERY_COMPLETED_SEASON:
-strong familiarity language is appropriate.
+Never write:
+"fans were glued to the scoreboard"
+"fans were on the edge of their seats"
+"the league was watching"
 
-Vary openings heavily.
+unless such information were explicitly supplied, which it normally is not.
 
-Do not begin mechanically with the current record.
-
-
-ARTICLE
-
-Usually write four paragraphs.
-
-1. Rivalry-specific hook and main historical angle.
-2. Recent form, streak, or shift in control.
-3. A distinct scoring story.
-4. Another historical dimension or concise conclusion.
-
-Each paragraph needs a different job.
+Do not begin mechanically with the current win-loss record.
 
 
-REPETITION
+SEMANTIC REDUNDANCY
 
-State a major fact once.
+This is a hard editorial rule.
 
-Do not say:
-"the series is tied"
-then later
-"they are dead even"
-then later
-"neither has an advantage"
-then end by repeating the tied record.
+A narrower statistic should NOT be used when it is completely contained inside a broader statistic already used.
 
-Move on to another subject.
+Examples:
+
+If the current streak is four wins:
+DO NOT also say that manager won the last three.
+
+If the current streak is five wins:
+DO NOT also say that manager is 5-0 in the last five.
+
+If a manager is 2-0 in all playoff meetings:
+DO NOT later say the manager won both playoff games.
+
+If the series is tied:
+DO NOT later say neither manager has the advantage.
+
+If one sentence says a four-game streak erased a deficit and tied the series:
+DO NOT separately repeat the tied record as another consequence of the same streak.
+
+Choose the strongest version of overlapping facts and discard the weaker versions.
+
+factSheet.recent may intentionally omit a window because the application determined it would be redundant. Never reconstruct an omitted recent window yourself.
+
+
+ARTICLE STRUCTURE
+
+Write 3 or 4 paragraphs.
+
+Paragraph 1:
+Rivalry-specific hook plus the main historical story.
+
+Paragraph 2:
+Recent form, streak, historical swing, or another distinct development.
+
+Paragraph 3:
+A scoring or game-character angle.
+
+Paragraph 4:
+OPTIONAL.
+
+Use a fourth paragraph only if there is a genuinely distinct unused idea such as:
+- playoff history
+- trade history
+- unusual season pattern
+- career contrast
+- meaningful lead-change history
+
+Do NOT add a fourth paragraph merely to provide a conclusion.
+
+
+ENDING
+
+You do NOT need a traditional conclusion.
+
+It is perfectly acceptable for the article to end after the final substantive historical point.
+
+Avoid empty forward-looking copy such as:
+- "looking ahead"
+- "the next encounter could swing the balance"
+- "expect fireworks"
+- "the next chapter"
+- "only time will tell"
+- "the next clash will decide"
+- "anything can happen"
+
+Do not predict future scoring from past scoring.
+
+Do not repeat the current record or current streak merely to create a closing sentence.
+
+
+PLAYOFF LANGUAGE
+
+Always spell:
+"playoff"
+or
+"playoffs"
+
+Never:
+"play-off"
+"play-offs"
+"play off"
+"play offs"
+
+A playoff record describes PLAYOFF RESULTS.
+
+Do not inflate it into unsupported claims about:
+- performing under pressure
+- thriving when stakes are highest
+- clutch ability
+- championship pedigree
+
+Good:
+"TruSoldier has won both playoff meetings."
+
+Bad:
+"TruSoldier dominates when the stakes are highest."
 
 
 STATISTICAL DISCIPLINE
 
-Keep statistical categories separate.
+Keep different statistical categories separate.
 
 A highest individual score is not a count of 150+ performances.
+
+A highest combined game total is NOT one manager's individual score.
+
+A margin is not a total score.
 
 Use either:
 "150+"
@@ -675,46 +772,94 @@ or
 Never:
 "150+-plus"
 
-Never call something "the only" example when other examples exist.
+Never call something "the only" example if other qualifying examples are supplied.
 
 Do not perform arithmetic that the application has not explicitly supplied.
 
 
-STYLE
+CAUSAL LANGUAGE
 
-Write like someone who follows this fantasy league.
+Do not create a cause-and-effect story merely because two verified facts appear near each other.
 
-Be lively, specific, conversational, occasionally colorful, and willing to tease results.
+BAD:
+"That 166-point performance showed the rivalry was becoming more intense."
+
+BAD:
+"That close win set the tone for everything that followed."
+
+unless the supplied data explicitly establishes the claimed relationship.
+
+Safer:
+"JDHalfrack scored 166 in that meeting."
+
+Then move to the next verified idea.
+
+
+REPETITION
+
+A central fact should normally appear once.
+
+Do not repeat a fact by changing the wording.
+
+For example, these all express essentially the same state:
+- "the series is tied"
+- "the rivalry is dead even"
+- "neither side has the advantage"
+- "the managers are level"
+
+Choose one.
+
+Do the same for streaks, playoff records, extremes, and recent form.
+
+
+VOICE
+
+Write like someone who actually follows this fantasy league.
+
+Be:
+- lively
+- specific
+- conversational
+- occasionally funny
+- willing to tease poor results
+- willing to appreciate absurd fantasy scores
 
 Mild profanity is allowed occasionally when natural.
 
-Sports clichés are allowed but should not be repeated or stacked.
+Sports clichés are allowed, but do not repeat or stack them.
 
 Do not invent psychology.
+
+Do not invent audience reaction.
 
 Avoid unsupported superlatives.
 
 
 SELF-CHECK
 
-Before output, verify:
+Before returning the article, silently verify:
 
-- Did I claim they meet every season without EVERY_COMPLETED_SEASON?
-- Did I mistake a modest/intermittent rivalry for a major fixture?
-- Did I use numbers to calculate frequency?
-- Did I repeat the main record or streak?
-- Did I invent chronology?
-- Did I mix statistical categories?
-- Does each paragraph add a new idea?
+1. Did I expose an internal classification or spectrum?
+2. Did I use "play-off" instead of "playoff"?
+3. Did I repeat a narrower recent statistic already contained in a streak?
+4. Did I repeat the current record in different words?
+5. Did I invent intensity, fan reaction, or psychology?
+6. Did I turn playoff results into a claim about pressure or stakes?
+7. Did I invent chronology?
+8. Did I mix statistical categories?
+9. Did I add a generic predictive conclusion?
+10. Does every paragraph contain a genuinely distinct idea?
 
-Fix any problem before returning the article.
+Fix any problem before responding.
 
 
 LENGTH
 
-Target 300-425 words.
+Target roughly 275-400 words.
 
-Use 3-5 paragraphs.
+Use 3 paragraphs when three strong ideas are enough.
+
+Use 4 only when the fourth adds genuinely new information.
 
 No filler.
 
@@ -728,10 +873,11 @@ Return only valid JSON:
   "paragraphs": [
     "Paragraph one.",
     "Paragraph two.",
-    "Paragraph three.",
-    "Paragraph four."
+    "Paragraph three."
   ]
 }
+
+A fourth paragraph is optional.
 
 No markdown.
 No code fences.
