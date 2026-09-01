@@ -1,7 +1,10 @@
 <script>
     import { goto } from "$app/navigation";
-	import { getDatesActive, getRosterIDFromManagerID, getTeamNameFromTeamManagers } from "$lib/utils/helperFunctions/universalFunctions";
-    import {dynasty} from "$lib/utils/leagueInfo"
+    import {
+        getDatesActive,
+        getRosterIDFromManagerID,
+        getTeamNameFromTeamManagers
+    } from "$lib/utils/helperFunctions/universalFunctions";
 
     export let manager, leagueTeamManagers, key;
 
@@ -11,14 +14,86 @@
     let rosterID = manager.roster;
     let year = null;
 
-    if(manager.managerID) {
-        const dates = getDatesActive(leagueTeamManagers, manager.managerID);
-        if(dates.end) retired = true;
+    if (manager.managerID) {
+        const dates = getDatesActive(
+            leagueTeamManagers,
+            manager.managerID
+        );
 
-        ({rosterID, year} = getRosterIDFromManagerID(leagueTeamManagers, manager.managerID) || {rosterID, year});
+        if (dates.end) {
+            retired = true;
+        }
+
+        ({ rosterID, year } =
+            getRosterIDFromManagerID(
+                leagueTeamManagers,
+                manager.managerID
+            ) || { rosterID, year });
     }
 
-    const commissioner = manager.managerID ? leagueTeamManagers.users[manager.managerID].is_owner : false;
+    const commissioner = manager.managerID
+        ? leagueTeamManagers.users[manager.managerID].is_owner
+        : false;
+
+    const scores = manager.windowScores ?? {
+        winNow: 0,
+        dynasty: 0,
+        rebuild: 0
+    };
+
+    const getScoreColor = (score, invert = false) => {
+        let value = Math.max(
+            0,
+            Math.min(100, score ?? 0)
+        );
+
+        if (invert) {
+            value = 100 - value;
+        }
+
+        // 0 = red, 100 = blue
+        const red = Math.round(
+            210 - value * 1.3
+        );
+
+        const green = Math.round(
+            70 + value * 0.45
+        );
+
+        const blue = Math.round(
+            70 + value * 1.6
+        );
+
+        return `rgba(${red}, ${green}, ${blue}, 0.18)`;
+    };
+
+    const getScoreBorderColor = (
+        score,
+        invert = false
+    ) => {
+        let value = Math.max(
+            0,
+            Math.min(100, score ?? 0)
+        );
+
+        if (invert) {
+            value = 100 - value;
+        }
+
+        const red = Math.round(
+            210 - value * 1.3
+        );
+
+        const green = Math.round(
+            70 + value * 0.45
+        );
+
+        const blue = Math.round(
+            70 + value * 1.6
+        );
+
+        return `rgba(${red}, ${green}, ${blue}, 0.65)`;
+    };
 </script>
 
 <style>
@@ -38,8 +113,8 @@
     }
 
     .manager:hover {
-        box-shadow: 0 0 10px 0 bar(--g999);
-        background-color: bar(--eee);
+        box-shadow: 0 0 10px 0 var(--g999);
+        background-color: var(--eee);
     }
 
     .photo {
@@ -76,6 +151,7 @@
 
     .info {
         display: flex;
+        align-items: center;
     }
 
     .infoSlot {
@@ -84,28 +160,28 @@
         width: 63px;
     }
 
-    .infoIcon {
+    .scoreCircle {
         display: inline-flex;
         height: 40px;
         width: 40px;
         justify-content: center;
         align-items: center;
         border-radius: 100%;
-        border: 1px solid #ccc;
-        overflow: hidden;
-        background-color: var(--fff);
-    }
-
-    .infoImg {
-        height: 30px;
-    }
-
-    .infoAnswer {
-        font-size: 0.8em;
+        border: 1px solid;
+        font-size: 0.9em;
+        font-weight: 700;
         color: var(--g555);
+        box-sizing: border-box;
+    }
+
+    .scoreLabel {
         width: 63px;
         text-align: center;
-        line-height: 1.2em;
+        font-size: 0.68em;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--g555);
+        margin-top: 2px;
     }
 
     .avatarHolder {
@@ -129,7 +205,7 @@
         color: #fff;
     }
 
-	@media (max-width: 665px) {
+    @media (max-width: 665px) {
         .name {
             font-size: 0.9em;
             margin-left: 0.5em;
@@ -141,7 +217,7 @@
         }
     }
 
-	@media (max-width: 595px) {
+    @media (max-width: 595px) {
         .manager {
             padding: 0.5em 0;
             margin: 0.3em 0;
@@ -161,23 +237,19 @@
         }
 
         .infoSlot {
-            text-align: center;
             margin: 0 0.4em;
             width: 56px;
         }
 
-        .infoIcon {
+        .scoreCircle {
             height: 30px;
             width: 30px;
+            font-size: 0.75em;
         }
 
-        .infoImg {
-            height: 25px;
-        }
-
-        .infoAnswer {
-            font-size: 0.7em;
+        .scoreLabel {
             width: 56px;
+            font-size: 0.6em;
         }
     }
 
@@ -198,93 +270,123 @@
         }
 
         .infoSlot {
-            text-align: center;
-            margin: 0 0.4em;
+            margin: 0 0.25em;
             width: 49px;
         }
 
-        .infoIcon {
+        .scoreCircle {
             height: 25px;
             width: 25px;
+            font-size: 0.65em;
         }
 
-        .infoImg {
-            height: 22px;
-        }
-
-        .infoAnswer {
-            font-size: 0.6em;
+        .scoreLabel {
             width: 49px;
+            font-size: 0.55em;
         }
     }
 
     @media (max-width: 370px) {
-        .infoTeam {
+        .team {
             display: none;
         }
-    }
 
-    .question {
-        background-color: #fff;
+        .infoSlot {
+            margin: 0 0.15em;
+        }
     }
 </style>
 
-<div class="manager" style="{retired ? "background-image: url(/retired.png); background-color: var(--ddd)": ""}" onclick={() => goto(`/manager?manager=${key}`)}>
+<div
+    class="manager"
+    style="{retired
+        ? 'background-image: url(/retired.png); background-color: var(--ddd)'
+        : ''}"
+    onclick={() => goto(`/manager?manager=${key}`)}
+>
     <div class="avatarHolder">
-        <img class="photo" src="{manager.photo}" alt="{manager.name}" />
+        <img
+            class="photo"
+            src="{manager.photo}"
+            alt="{manager.name}"
+        />
+
         {#if commissioner}
             <div class="commissionerBadge">
                 <span>C</span>
             </div>
         {/if}
     </div>
-    <div class="name">{manager.name}</div>
-    <div class="team">{getTeamNameFromTeamManagers(leagueTeamManagers, rosterID, year)}</div>
-    <div class="spacer" />
+
+    <div class="name">
+        {manager.name}
+    </div>
+
+    <div class="team">
+        {getTeamNameFromTeamManagers(
+            leagueTeamManagers,
+            rosterID,
+            year
+        )}
+    </div>
+
+    <div class="spacer"></div>
+
     <div class="info">
-        <!-- Favorite team (optional) -->
-        <div class="infoSlot infoTeam">
-            {#if manager.favoriteTeam}
-                <div class="infoIcon">
-                    <img class="infoImg" src="https://sleepercdn.com/images/team_logos/nfl/{manager.favoriteTeam}.png" alt="favorite team"/>
-                </div>
-            {:else}
-                <div class="infoIcon question">
-                    <img class="infoImg" src="/managers/question.jpg" alt="favorite team"/>
-                </div>
-            {/if}
-        </div>
-        <!-- Preferred contact -->
+
+        <!-- Win Now -->
         <div class="infoSlot">
-            {#if manager.preferredContact}
-                <div class="infoIcon">
-                    <img class="infoImg" src="/{manager.preferredContact}.png" alt="{manager.preferredContact}"/>
-                </div>
-                <div class="infoAnswer">
-                    {manager.preferredContact}
-                </div>
-            {:else}
-                <div class="infoIcon question">
-                    <img class="infoImg" src="/managers/question.jpg" alt="favorite team"/>
-                </div>
-            {/if}
-        </div>
-        <!-- Rebuild mode (optional and only displayed for dynasty leagues) -->
-        {#if dynasty}
-            <div class="infoSlot infoRebuild">
-                {#if manager.mode}
-                    <div class="infoIcon">
-                        <img class="infoImg" src="/{manager.mode.replace(' ', '%20')}.png" alt="win now or rebuild"/>
-                    </div>
-                    <div class="infoAnswer">
-                        {manager.mode}
-                    </div>
-                {:else}
-                    <div class="infoIcon question">
-                        <img class="infoImg" src="/managers/question.jpg" alt="favorite team"/>
-                    </div>
-                {/if}
+            <div
+                class="scoreCircle"
+                title="Win Now: {scores.winNow}"
+                style="
+                    background-color: {getScoreColor(scores.winNow)};
+                    border-color: {getScoreBorderColor(scores.winNow)};
+                "
+            >
+                {scores.winNow}
             </div>
-        {/if}
+
+            <div class="scoreLabel">
+                WN
+            </div>
+        </div>
+
+        <!-- Dynasty -->
+        <div class="infoSlot">
+            <div
+                class="scoreCircle"
+                title="Dynasty: {scores.dynasty}"
+                style="
+                    background-color: {getScoreColor(scores.dynasty)};
+                    border-color: {getScoreBorderColor(scores.dynasty)};
+                "
+            >
+                {scores.dynasty}
+            </div>
+
+            <div class="scoreLabel">
+                DYN
+            </div>
+        </div>
+
+        <!-- Rebuild -->
+        <div class="infoSlot">
+            <div
+                class="scoreCircle"
+                title="Rebuild: {scores.rebuild}"
+                style="
+                    background-color: {getScoreColor(scores.rebuild, true)};
+                    border-color: {getScoreBorderColor(scores.rebuild, true)};
+                "
+            >
+                {scores.rebuild}
+            </div>
+
+            <div class="scoreLabel">
+                REB
+            </div>
+        </div>
+
     </div>
 </div>
