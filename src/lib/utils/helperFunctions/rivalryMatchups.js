@@ -175,14 +175,6 @@ export const getRivalryMatchups = async (
             ==========================================
             WINNERS-BRACKET PLAYOFFS ONLY
             ==========================================
-
-            Sleeper also has consolation/lower-bracket
-            games during these weeks.
-
-            We specifically fetch the WINNERS bracket
-            and use it as the authority for whether
-            these two rosters actually played a
-            championship-bracket playoff game.
         */
 
         const winnersBracketResponse =
@@ -207,8 +199,12 @@ export const getRivalryMatchups = async (
             winnersBracket.length
         ) {
             /*
-                Find every winners-bracket node where
-                these exact two roster IDs met.
+                Only an exact pairing in Sleeper's
+                winners bracket qualifies as a playoff
+                rivalry game.
+
+                Consolation/lower-bracket games never
+                qualify here.
             */
             const rivalryPlayoffNodes =
                 winnersBracket.filter(node => {
@@ -243,12 +239,6 @@ export const getRivalryMatchups = async (
                 });
 
 
-            /*
-                There could theoretically be more than
-                one qualifying postseason meeting in
-                unusual bracket formats, so process
-                every matching node.
-            */
             for (
                 const bracketNode
                 of rivalryPlayoffNodes
@@ -260,12 +250,7 @@ export const getRivalryMatchups = async (
                     continue;
                 }
 
-                /*
-                    Round 1 occurs during
-                    playoff_week_start.
 
-                    Round 2 = following NFL week, etc.
-                */
                 const week =
                     playoffStartWeek +
                     round -
@@ -366,7 +351,35 @@ const createRivalryBucket = () => {
 
 /*
     =====================================================
+    SCORE ONE SIDE
+    =====================================================
+*/
+
+const getSidePoints = side => {
+    if (
+        !side ||
+        !Array.isArray(side.points)
+    ) {
+        return 0;
+    }
+
+    return side.points.reduce(
+        (total, value) =>
+            total +
+            (Number(value) || 0),
+        0
+    );
+};
+
+
+/*
+    =====================================================
     ADD ONE COMPLETED MATCHUP
+
+    IMPORTANT:
+    A 0-0 matchup is treated as UNPLAYED.
+    It is not counted as a tie and it is not added
+    to the matchup history.
     =====================================================
 */
 
@@ -377,35 +390,51 @@ const addMatchup = (
     week,
     label = null
 ) => {
-    const sideA = matchup[0];
-    const sideB = matchup[1];
+    const sideA = matchup?.[0];
+    const sideB = matchup?.[1];
+
+    if (
+        !sideA ||
+        !sideB
+    ) {
+        return false;
+    }
 
 
     const sideAPoints =
-        sideA.points.reduce(
-            (total, value) =>
-                total + value,
-            0
-        );
-
+        getSidePoints(sideA);
 
     const sideBPoints =
-        sideB.points.reduce(
-            (total, value) =>
-                total + value,
-            0
-        );
+        getSidePoints(sideB);
+
+
+    /*
+        Sleeper can create future matchup shells that
+        appear as 0-0.
+
+        Those games have NOT been played.
+    */
+    if (
+        sideAPoints === 0 &&
+        sideBPoints === 0
+    ) {
+        return false;
+    }
 
 
     bucket.points.one += sideAPoints;
     bucket.points.two += sideBPoints;
 
 
-    if (sideAPoints > sideBPoints) {
+    if (
+        sideAPoints >
+        sideBPoints
+    ) {
         bucket.wins.one++;
     }
     else if (
-        sideAPoints < sideBPoints
+        sideAPoints <
+        sideBPoints
     ) {
         bucket.wins.two++;
     }
@@ -420,6 +449,8 @@ const addMatchup = (
         label,
         matchup
     });
+
+    return true;
 };
 
 
@@ -477,7 +508,11 @@ const processRivalryMatchups = (
                     match.starters,
 
                 points:
-                    match.starters_points
+                    Array.isArray(
+                        match.starters_points
+                    )
+                        ? match.starters_points
+                        : []
             });
         }
     }
@@ -522,6 +557,28 @@ const processRivalryMatchups = (
     }
 
 
+    /*
+        Defense-in-depth:
+        discard an unplayed 0-0 game here too.
+    */
+    const sideOnePoints =
+        getSidePoints(
+            matchup[0]
+        );
+
+    const sideTwoPoints =
+        getSidePoints(
+            matchup[1]
+        );
+
+    if (
+        sideOnePoints === 0 &&
+        sideTwoPoints === 0
+    ) {
+        return;
+    }
+
+
     return {
         matchup,
         week
@@ -559,23 +616,23 @@ const getPlayoffRoundLabel = (
         Math.max(...rounds);
 
 
-    /*
-        Work backward from the championship so this
-        also works with leagues whose playoff bracket
-        has a different number of rounds.
-    */
-
     if (round == finalRound) {
         return "Championship";
     }
 
 
-    if (round == finalRound - 1) {
+    if (
+        round ==
+        finalRound - 1
+    ) {
         return "Semifinal";
     }
 
 
-    if (round == finalRound - 2) {
+    if (
+        round ==
+        finalRound - 2
+    ) {
         return "Quarterfinal";
     }
 
