@@ -9,6 +9,18 @@
         data.impactInfo;
 
 
+    const DEFAULT_VISIBLE =
+        10;
+
+
+    let showAllPositive =
+        false;
+
+
+    let showAllNegative =
+        false;
+
+
     const score =
         value => {
 
@@ -135,6 +147,50 @@
             Number(
                 game?.projectionBonus
             ) > 0
+        );
+    };
+
+
+    const visibleGames =
+        (
+            games,
+            showAll
+        ) => {
+
+        if (
+            !Array.isArray(
+                games
+            )
+        ) {
+            return [];
+        }
+
+
+        return showAll
+            ? games
+            : games.slice(
+                0,
+                DEFAULT_VISIBLE
+            );
+    };
+
+
+    const hiddenCount =
+        games => {
+
+        if (
+            !Array.isArray(
+                games
+            )
+        ) {
+            return 0;
+        }
+
+
+        return Math.max(
+            0,
+            games.length -
+                DEFAULT_VISIBLE
         );
     };
 </script>
@@ -328,6 +384,40 @@
     }
 
 
+    .expandHolder {
+        display: flex;
+        justify-content: center;
+        margin: 1.25em 0 0.5em;
+    }
+
+
+    .expandButton {
+        appearance: none;
+        border: 1px solid var(--aaa);
+        border-radius: 999px;
+        background: var(--rivalryBack);
+        color: var(--text);
+        padding: 0.7em 1.35em;
+        font: inherit;
+        font-size: 0.85em;
+        font-weight: 650;
+        cursor: pointer;
+        transition:
+            transform 0.15s ease,
+            opacity 0.15s ease;
+    }
+
+
+    .expandButton:hover {
+        opacity: 0.8;
+    }
+
+
+    .expandButton:active {
+        transform: scale(0.97);
+    }
+
+
     .noGames {
         padding: 2em;
         text-align: center;
@@ -395,6 +485,12 @@
         .impactScore {
             min-width: 52px;
         }
+
+
+        .expandButton {
+            width: 90%;
+            max-width: 320px;
+        }
     }
 </style>
 
@@ -407,12 +503,14 @@
 
 
     <div class="intro">
-        The 50 strongest positive and negative turning points
-        in league history, ranked by Impact score. Impact measures
-        short-term change, long-term program trajectory, streaks,
-        and postseason significance. Close finishes and genuine
-        projection upsets can provide small bonuses after a game
-        has already demonstrated historical impact.
+        The strongest positive and negative turning points
+        in league history, ranked by Impact score. The top
+        10 are shown by default, with the complete top 50
+        available below. Impact measures short-term change,
+        long-term program trajectory, streaks, and postseason
+        significance. Close finishes and genuine projection
+        upsets can provide small bonuses after a game has
+        already demonstrated historical impact.
     </div>
 
 
@@ -436,6 +534,10 @@
         <div class="columns">
 
 
+            <!-- =========================================
+                 POSITIVE
+                 ========================================= -->
+
             <section class="column">
 
                 <h2 class="columnTitle">
@@ -449,7 +551,10 @@
                 </div>
 
 
-                {#each impact.positive as game, index}
+                {#each visibleGames(
+                    impact.positive,
+                    showAllPositive
+                ) as game, index}
 
                     <article class="impactCard">
 
@@ -567,8 +672,43 @@
 
                 {/each}
 
+
+                {#if impact.positive.length > DEFAULT_VISIBLE}
+
+                    <div class="expandHolder">
+
+                        <button
+                            class="expandButton"
+                            type="button"
+                            on:click={() => {
+                                showAllPositive =
+                                    !showAllPositive;
+                            }}
+                        >
+
+                            {#if showAllPositive}
+
+                                Show Top 10
+
+                            {:else}
+
+                                Show All {impact.positive.length}
+                                (+{hiddenCount(impact.positive)})
+
+                            {/if}
+
+                        </button>
+
+                    </div>
+
+                {/if}
+
             </section>
 
+
+            <!-- =========================================
+                 NEGATIVE
+                 ========================================= -->
 
             <section class="column">
 
@@ -583,7 +723,10 @@
                 </div>
 
 
-                {#each impact.negative as game, index}
+                {#each visibleGames(
+                    impact.negative,
+                    showAllNegative
+                ) as game, index}
 
                     <article class="impactCard">
 
@@ -708,6 +851,37 @@
                     </div>
 
                 {/each}
+
+
+                {#if impact.negative.length > DEFAULT_VISIBLE}
+
+                    <div class="expandHolder">
+
+                        <button
+                            class="expandButton"
+                            type="button"
+                            on:click={() => {
+                                showAllNegative =
+                                    !showAllNegative;
+                            }}
+                        >
+
+                            {#if showAllNegative}
+
+                                Show Top 10
+
+                            {:else}
+
+                                Show All {impact.negative.length}
+                                (+{hiddenCount(impact.negative)})
+
+                            {/if}
+
+                        </button>
+
+                    </div>
+
+                {/if}
 
             </section>
 
