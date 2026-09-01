@@ -58,15 +58,26 @@ export const getRivalryMatchups = async (
 
 
     /*
-        League-wide regular-season pairing history.
+        Every historical regular-season manager pairing.
 
-        This reuses the SAME Sleeper matchup responses
-        already being downloaded for the rivalry page.
+        Later, rankings will be filtered down to pairings
+        where BOTH managers are active in the CURRENT
+        league season.
     */
 
     const leaguePairs =
         {};
 
+
+    /*
+        Selected rivalry history.
+
+        sharedSeasons includes the current season if both
+        managers are active.
+
+        completedSharedSeasons does NOT include a current
+        unfinished season.
+    */
 
     const sharedSeasons =
         [];
@@ -74,22 +85,15 @@ export const getRivalryMatchups = async (
     const completedSharedSeasons =
         [];
 
+    const completedSharedSeasonsWithMeeting =
+        [];
+
 
     /*
-        Important:
+        Meetings used ONLY for the completed-season
+        frequency calculation.
 
-        This is NOT necessarily the same as the total
-        selected rivalry meeting count.
-
-        It contains only meetings from fully completed
-        regular seasons in which both managers participated.
-
-        Therefore:
-        - preseason 2026 contributes nothing
-        - a partially played 2026 contributes nothing
-        - 2026 will count only after its regular season ends
-
-        That keeps the frequency classifier stable.
+        An unfinished current season contributes nothing.
     */
 
     let completedSharedSeasonMeetings =
@@ -97,9 +101,9 @@ export const getRivalryMatchups = async (
 
 
     /*
-        ===============================================
-        WALK THE SLEEPER ARCHIVE
-        ===============================================
+        =================================================
+        WALK EVERY LINKED SLEEPER SEASON
+        =================================================
     */
 
     while (
@@ -181,9 +185,9 @@ export const getRivalryMatchups = async (
 
 
         /*
-            ==========================================
+            =================================================
             REGULAR SEASON
-            ==========================================
+            =================================================
         */
 
         const regularSeasonPromises =
@@ -241,8 +245,10 @@ export const getRivalryMatchups = async (
 
 
         /*
-            Index ALL league matchups using data we
-            already downloaded.
+            Index every COMPLETED league matchup.
+
+            This lets us rank current managers' historical
+            pairings without making another Sleeper pass.
         */
 
         for (
@@ -261,7 +267,8 @@ export const getRivalryMatchups = async (
 
 
         /*
-            Is this regular season actually finished?
+            An unfinished current season must NOT be used
+            in frequency/cadence calculations.
         */
 
         const regularSeasonComplete =
@@ -281,11 +288,11 @@ export const getRivalryMatchups = async (
 
 
         /*
-            Selected rivalry regular-season games.
+            Selected rivalry.
         */
 
         if (bothActive) {
-            let completedMeetingsThisSeason =
+            let meetingsThisSeason =
                 0;
 
 
@@ -325,29 +332,39 @@ export const getRivalryMatchups = async (
 
 
                 if (added) {
-                    completedMeetingsThisSeason++;
+                    meetingsThisSeason++;
                 }
             }
 
 
             /*
-                Only completed regular seasons contribute
-                to our frequency classification.
+                Only a fully completed regular season gets
+                included in frequency/cadence calculations.
             */
 
             if (
                 regularSeasonComplete
             ) {
                 completedSharedSeasonMeetings +=
-                    completedMeetingsThisSeason;
+                    meetingsThisSeason;
+
+
+                if (
+                    meetingsThisSeason >
+                    0
+                ) {
+                    completedSharedSeasonsWithMeeting.push(
+                        year
+                    );
+                }
             }
         }
 
 
         /*
-            ==========================================
-            WINNERS-BRACKET PLAYOFFS ONLY
-            ==========================================
+            =================================================
+            WINNERS-BRACKET PLAYOFFS
+            =================================================
         */
 
         if (bothActive) {
@@ -499,7 +516,7 @@ export const getRivalryMatchups = async (
 
 
     /*
-        Newest first for the display carousels.
+        UI wants newest -> oldest.
     */
 
     sortMatchups(
@@ -515,10 +532,6 @@ export const getRivalryMatchups = async (
             .matchups
     );
 
-
-    /*
-        Build the league-wide identity context.
-    */
 
     rivalry.leagueContext =
         buildLeagueContext({
@@ -539,6 +552,8 @@ export const getRivalryMatchups = async (
             sharedSeasons,
 
             completedSharedSeasons,
+
+            completedSharedSeasonsWithMeeting,
 
             completedSharedSeasonMeetings,
 
@@ -589,7 +604,7 @@ const createRivalryBucket = () => {
 
 /*
     =====================================================
-    SCORE ONE SIDE
+    SCORE HELPERS
     =====================================================
 */
 
@@ -618,12 +633,6 @@ const getSidePoints = side => {
     );
 };
 
-
-/*
-    =====================================================
-    RAW SLEEPER SCORE
-    =====================================================
-*/
 
 const getRawEntryPoints =
     entry => {
@@ -657,7 +666,7 @@ const getRawEntryPoints =
 
 /*
     =====================================================
-    ADD ONE COMPLETED MATCHUP
+    ADD COMPLETED MATCHUP
     =====================================================
 */
 
@@ -695,7 +704,7 @@ const addMatchup = (
 
 
     /*
-        0-0 = unplayed.
+        0-0 = future/unplayed.
     */
 
     if (
@@ -744,7 +753,7 @@ const addMatchup = (
 
 /*
     =====================================================
-    PROCESS SELECTED RIVALRY WEEK
+    SELECTED RIVALRY WEEK
     =====================================================
 */
 
@@ -836,7 +845,7 @@ const processRivalryMatchups = (
 
 
     /*
-        Player One stays on the left.
+        Keep Player One on left.
     */
 
     if (
@@ -853,20 +862,20 @@ const processRivalryMatchups = (
     }
 
 
-    const sideOnePoints =
+    const one =
         getSidePoints(
             matchup[0]
         );
 
-    const sideTwoPoints =
+    const two =
         getSidePoints(
             matchup[1]
         );
 
 
     if (
-        sideOnePoints === 0 &&
-        sideTwoPoints === 0
+        one === 0 &&
+        two === 0
     ) {
         return;
     }
@@ -881,7 +890,7 @@ const processRivalryMatchups = (
 
 /*
     =====================================================
-    LEAGUE-WIDE WEEK INDEX
+    INDEX ONE LEAGUE WEEK
     =====================================================
 */
 
@@ -1106,13 +1115,82 @@ const indexLeagueWeek = (
 
 /*
     =====================================================
-    IS REGULAR SEASON COMPLETE?
+    CURRENT ACTIVE MANAGERS
     =====================================================
 
-    We look at the final scheduled regular-season week.
+    Rankings are ONLY between managers who are members
+    of the league in the CURRENT season.
 
-    If that week is still composed of 0-0 shells,
-    the season is not complete.
+    Retired/former managers remain part of historical
+    head-to-head records but do NOT influence ranking.
+    =====================================================
+*/
+
+const getCurrentActiveManagerIDs =
+    teamManagers => {
+
+        const active =
+            new Set();
+
+
+        const currentSeason =
+            teamManagers
+                ?.currentSeason;
+
+
+        const currentRosters =
+            teamManagers
+                ?.teamManagersMap
+                ?.[currentSeason];
+
+
+        if (!currentRosters) {
+            return active;
+        }
+
+
+        for (
+            const rosterID
+            of Object.keys(
+                currentRosters
+            )
+        ) {
+            const managers =
+                currentRosters[
+                    rosterID
+                ]
+                    ?.managers;
+
+
+            if (
+                !Array.isArray(
+                    managers
+                )
+            ) {
+                continue;
+            }
+
+
+            for (
+                const managerID
+                of managers
+            ) {
+                active.add(
+                    String(
+                        managerID
+                    )
+                );
+            }
+        }
+
+
+        return active;
+    };
+
+
+/*
+    =====================================================
+    REGULAR SEASON COMPLETE?
     =====================================================
 */
 
@@ -1223,7 +1301,7 @@ const isRegularSeasonComplete =
 
 /*
     =====================================================
-    GET MANAGERS FOR ROSTER
+    ROSTER MANAGERS
     =====================================================
 */
 
@@ -1252,7 +1330,9 @@ const getManagersForRoster = (
     return managers
         .map(
             id =>
-                String(id)
+                String(
+                    id
+                )
         )
         .filter(Boolean);
 };
@@ -1345,7 +1425,7 @@ const getBottomPairRank = (
 
 /*
     =====================================================
-    OPPONENT-FREQUENCY RANK
+    OPPONENT RANK
     =====================================================
 */
 
@@ -1402,12 +1482,6 @@ const getOpponentRank = (
         tied:
             tieCount > 1,
 
-        meetings:
-            selected.meetings,
-
-        opponentCount:
-            managerPairs.length,
-
         isMostPlayedOpponent:
             rank === 1
     };
@@ -1416,7 +1490,11 @@ const getOpponentRank = (
 
 /*
     =====================================================
-    FREQUENCY CLASS
+    FREQUENCY
+    =====================================================
+
+    This is RATE, calculated only from fully completed
+    regular seasons shared by these managers.
     =====================================================
 */
 
@@ -1458,13 +1536,68 @@ const getFrequencyClass =
 
 /*
     =====================================================
-    QUALITATIVE FREQUENCY DESCRIPTION
+    CADENCE
     =====================================================
 
-    THIS is what the AI should consume.
+    This answers a DIFFERENT question:
 
-    It doesn't need the arithmetic used to reach the
-    classification.
+    Did these managers actually meet in the seasons they
+    were both around?
+
+    This prevents six scattered matchups from becoming
+    "they meet every season."
+    =====================================================
+*/
+
+const getCadenceClass = (
+    completedSeasons,
+    seasonsWithMeeting
+) => {
+    if (
+        !completedSeasons
+    ) {
+        return 'UNKNOWN';
+    }
+
+
+    const missed =
+        completedSeasons -
+        seasonsWithMeeting;
+
+
+    if (
+        missed === 0
+    ) {
+        return 'EVERY_COMPLETED_SEASON';
+    }
+
+
+    if (
+        missed === 1
+    ) {
+        return 'NEARLY_EVERY_SEASON';
+    }
+
+
+    const coverage =
+        seasonsWithMeeting /
+        completedSeasons;
+
+
+    if (
+        coverage >= 0.5
+    ) {
+        return 'INTERMITTENT';
+    }
+
+
+    return 'RARE';
+};
+
+
+/*
+    =====================================================
+    WORD DESCRIPTIONS
     =====================================================
 */
 
@@ -1476,42 +1609,73 @@ const getFrequencyDescription =
         ) {
             case 'EXTREMELY_FREQUENT':
                 return (
-                    'These managers are unusually familiar regular-season opponents. ' +
-                    'They cross paths far more often than a typical pairing.'
+                    'These managers are unusually familiar opponents and cross paths substantially more often than a typical pairing.'
                 );
 
 
             case 'FREQUENT':
                 return (
-                    'These managers meet regularly and have built substantial familiarity with one another.'
+                    'These managers have developed considerable regular-season familiarity.'
                 );
 
 
             case 'MODERATE':
                 return (
-                    'These managers cross paths with a fairly ordinary level of regular-season frequency.'
+                    'These managers have a meaningful history together, but their meeting frequency is not unusually high.'
                 );
 
 
             case 'INFREQUENT':
                 return (
-                    'These managers do not cross paths very often in the regular season.'
+                    'These managers have crossed paths relatively infrequently.'
                 );
 
 
             default:
                 return (
-                    'There is not enough completed shared-season history to characterize their meeting frequency.'
+                    'There is not enough completed shared-season history to characterize their frequency.'
                 );
         }
     };
 
 
-/*
-    =====================================================
-    SIZE DESCRIPTION
-    =====================================================
-*/
+const getCadenceDescription =
+    cadenceClass => {
+
+        switch (
+            cadenceClass
+        ) {
+            case 'EVERY_COMPLETED_SEASON':
+                return (
+                    'They have met in every completed season in which both managers were active.'
+                );
+
+
+            case 'NEARLY_EVERY_SEASON':
+                return (
+                    'They have met in nearly every completed season they shared, but not literally every one.'
+                );
+
+
+            case 'INTERMITTENT':
+                return (
+                    'Their meetings have been intermittent: they have missed each other in multiple completed seasons.'
+                );
+
+
+            case 'RARE':
+                return (
+                    'They have missed each other more often than they have met during completed seasons they shared.'
+                );
+
+
+            default:
+                return (
+                    'There is not enough completed history to describe their season-to-season cadence.'
+                );
+        }
+    };
+
 
 const getSizeDescription =
     sizeTier => {
@@ -1521,13 +1685,13 @@ const getSizeDescription =
         ) {
             case 'BIG':
                 return (
-                    'This is one of the league’s most frequently played regular-season pairings.'
+                    'Among pairings between current league managers, this is one of the four most frequently played regular-season matchups.'
                 );
 
 
             case 'SMALL':
                 return (
-                    'This is one of the league’s less frequently played established regular-season pairings.'
+                    'Among pairings between current league managers, this is one of the four least frequently played established regular-season matchups.'
                 );
 
 
@@ -1537,54 +1701,52 @@ const getSizeDescription =
                 );
 
 
+            case 'UNRANKED':
+                return (
+                    'This pairing is not part of the current-manager rivalry rankings.'
+                );
+
+
             default:
                 return (
-                    'This pairing falls in the middle of the league’s regular-season meeting history.'
+                    'Among pairings between current league managers, this matchup falls between the most- and least-played groups.'
                 );
         }
     };
 
 
-/*
-    =====================================================
-    PERSONAL FAMILIARITY DESCRIPTION
-    =====================================================
-*/
-
-const getOpponentRelationship =
-    (
-        managerName,
-        opponentName,
-        opponentFrequency
-    ) => {
-
-        if (!opponentFrequency) {
-            return null;
-        }
-
-
-        if (
-            opponentFrequency
-                .isMostPlayedOpponent
-        ) {
-            return (
-                `${opponentName} is one of ${managerName}'s most familiar regular-season opponents.`
-            );
-        }
-
-
-        if (
-            opponentFrequency.rank <=
-            3
-        ) {
-            return (
-                `${opponentName} is among the regular-season opponents ${managerName} has faced most often.`
-            );
-        }
-
-
+const getOpponentRelationship = (
+    managerName,
+    opponentName,
+    opponentFrequency
+) => {
+    if (!opponentFrequency) {
         return null;
-    };
+    }
+
+
+    if (
+        opponentFrequency
+            .isMostPlayedOpponent
+    ) {
+        return (
+            `${opponentName} is one of ${managerName}'s most familiar regular-season opponents among current league managers.`
+        );
+    }
+
+
+    if (
+        opponentFrequency.rank <=
+        3
+    ) {
+        return (
+            `${opponentName} is among the current league opponents ${managerName} has faced most often.`
+        );
+    }
+
+
+    return null;
+};
 
 
 /*
@@ -1600,12 +1762,48 @@ const buildLeagueContext = ({
     userTwoID,
     sharedSeasons,
     completedSharedSeasons,
+    completedSharedSeasonsWithMeeting,
     completedSharedSeasonMeetings,
     regularMeetings
 }) => {
-    const pairs =
+    const allPairs =
         Object.values(
             leaguePairs
+        );
+
+
+    /*
+        =================================================
+        CRITICAL RANKING FILTER
+        =================================================
+
+        Only CURRENTLY ACTIVE managers count toward
+        current league rivalry rankings.
+
+        Historical games involving retired managers remain
+        in rivalry history, but those pairings are removed
+        from this ranking pool.
+    */
+
+    const activeManagerIDs =
+        getCurrentActiveManagerIDs(
+            teamManagers
+        );
+
+
+    const rankablePairs =
+        allPairs.filter(
+            pair =>
+                activeManagerIDs.has(
+                    String(
+                        pair.managerOneID
+                    )
+                ) &&
+                activeManagerIDs.has(
+                    String(
+                        pair.managerTwoID
+                    )
+                )
         );
 
 
@@ -1623,20 +1821,41 @@ const buildLeagueContext = ({
         null;
 
 
+    const selectedManagersAreCurrent =
+        activeManagerIDs.has(
+            userOneID
+        ) &&
+        activeManagerIDs.has(
+            userTwoID
+        );
+
+
+    const selectedRankablePair =
+        selectedManagersAreCurrent
+            ? rankablePairs.find(
+                pair =>
+                    pair.key ===
+                    selectedKey
+            )
+            : null;
+
+
     const leagueRank =
-        selectedPair
+        selectedRankablePair
             ? getPairRank(
-                pairs,
-                selectedPair.meetings
+                rankablePairs,
+                selectedRankablePair
+                    .meetings
             )
             : null;
 
 
     const bottomRank =
-        selectedPair
+        selectedRankablePair
             ? getBottomPairRank(
-                pairs,
-                selectedPair.meetings
+                rankablePairs,
+                selectedRankablePair
+                    .meetings
             )
             : null;
 
@@ -1648,20 +1867,17 @@ const buildLeagueContext = ({
         );
 
 
-    /*
-        NEW means exactly:
-
-        Their first-ever regular-season meeting was in
-        the previous season.
-
-        Merely having few meetings does NOT make it NEW.
-    */
-
     const firstMeetingYear =
         selectedPair
             ?.firstYear ??
         null;
 
+
+    /*
+        NEW has the exact definition requested:
+
+        first-ever regular-season meeting = last season.
+    */
 
     const isNew =
         Boolean(
@@ -1678,7 +1894,13 @@ const buildLeagueContext = ({
         'NORMAL';
 
 
-    if (isNew) {
+    if (
+        !selectedManagersAreCurrent
+    ) {
+        sizeTier =
+            'UNRANKED';
+    }
+    else if (isNew) {
         sizeTier =
             'NEW';
     }
@@ -1699,9 +1921,9 @@ const buildLeagueContext = ({
 
 
     /*
-        Frequency arithmetic happens HERE, never in AI.
+        Frequency.
 
-        Only fully completed shared regular seasons count.
+        CURRENT unfinished season is not included.
     */
 
     const completedSeasonCount =
@@ -1709,7 +1931,7 @@ const buildLeagueContext = ({
             .length;
 
 
-    const completedFrequencyAverage =
+    const frequencyAverage =
         completedSeasonCount > 0
             ? (
                 completedSharedSeasonMeetings /
@@ -1720,24 +1942,47 @@ const buildLeagueContext = ({
 
     const frequencyClass =
         getFrequencyClass(
-            completedFrequencyAverage
+            frequencyAverage
+        );
+
+
+    /*
+        Cadence.
+
+        This explicitly records whether seasons were
+        skipped.
+    */
+
+    const seasonsWithMeetingCount =
+        completedSharedSeasonsWithMeeting
+            .length;
+
+
+    const cadenceClass =
+        getCadenceClass(
+            completedSeasonCount,
+            seasonsWithMeetingCount
         );
 
 
     const managerOneOpponentRank =
-        getOpponentRank(
-            pairs,
-            userOneID,
-            userTwoID
-        );
+        selectedManagersAreCurrent
+            ? getOpponentRank(
+                rankablePairs,
+                userOneID,
+                userTwoID
+            )
+            : null;
 
 
     const managerTwoOpponentRank =
-        getOpponentRank(
-            pairs,
-            userTwoID,
-            userOneID
-        );
+        selectedManagersAreCurrent
+            ? getOpponentRank(
+                rankablePairs,
+                userTwoID,
+                userOneID
+            )
+            : null;
 
 
     const managerOneName =
@@ -1754,19 +1999,18 @@ const buildLeagueContext = ({
         );
 
 
-    /*
-        We retain useful numeric data internally.
-
-        RivalryWriteup will deliberately NOT transmit
-        season-count/rate/rank numbers to Groq.
-    */
-
     return {
+        /*
+            THESE qualitative fields are what AI needs.
+        */
+
         sizeTier,
 
-        isNew,
-
         frequencyClass,
+
+        cadenceClass,
+
+        isNew,
 
         sizeDescription:
             getSizeDescription(
@@ -1776,6 +2020,11 @@ const buildLeagueContext = ({
         frequencyDescription:
             getFrequencyDescription(
                 frequencyClass
+            ),
+
+        cadenceDescription:
+            getCadenceDescription(
+                cadenceClass
             ),
 
         managerOneRelationship:
@@ -1794,34 +2043,30 @@ const buildLeagueContext = ({
 
 
         /*
-            Internal/debug data below.
+            INTERNAL / DEBUG INFORMATION.
+
+            RivalryWriteup deliberately does NOT send these
+            numbers to the AI.
         */
 
         currentSeason,
 
+        selectedManagersAreCurrent,
+
+        currentActiveManagerCount:
+            activeManagerIDs.size,
+
+        rankableCurrentManagerPairCount:
+            rankablePairs.length,
+
         regularSeasonMeetings:
             regularMeetings,
-
-        leaguePairingCount:
-            pairs.length,
 
         leagueMeetingRank:
             leagueRank,
 
         leagueBottomRank:
             bottomRank,
-
-        topFourByMeetingCount:
-            Boolean(
-                leagueRank !== null &&
-                leagueRank <= 4
-            ),
-
-        bottomFourByMeetingCount:
-            Boolean(
-                bottomRank !== null &&
-                bottomRank <= 4
-            ),
 
         firstRegularSeasonMeetingYear:
             firstMeetingYear,
@@ -1841,6 +2086,15 @@ const buildLeagueContext = ({
         completedSharedSeasons:
             [
                 ...completedSharedSeasons
+            ]
+                .sort(
+                    (a, b) =>
+                        a - b
+                ),
+
+        completedSharedSeasonsWithMeeting:
+            [
+                ...completedSharedSeasonsWithMeeting
             ]
                 .sort(
                     (a, b) =>
@@ -1876,7 +2130,7 @@ const buildLeagueContext = ({
 
 /*
     =====================================================
-    PLAYOFF ROUND LABEL
+    PLAYOFF LABEL
     =====================================================
 */
 
