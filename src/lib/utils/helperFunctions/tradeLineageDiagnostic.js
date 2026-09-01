@@ -1,43 +1,50 @@
 import { leagueID } from '$lib/utils/leagueInfo';
 import { getLeagueData } from './leagueData';
 import { getLeagueTeamManagers } from './leagueTeamManagers';
-import { waitForAll } from './multiPromise';
 
 
 /*
     =====================================================
-    HISTORICAL TRADE ANALYZER - PHASE 1
+    HISTORICAL TRADE ANALYZER - PHASE 2
     =====================================================
 
-    This file intentionally does NOT grade trades yet.
+    Phase 2 builds the recursive ASSET LINEAGE.
 
-    Its job is to prove the historical source data and
-    build the canonical raw ledger that the lineage engine
-    will use later.
+    It still does NOT assign trade grades.
 
-    VALIDATIONS
+    PLAYER RULES
+    - A player received in a trade is followed forward
+      while that franchise owns him.
+    - If the franchise officially drops him, that branch
+      ends.
+    - If the franchise trades him, the branch continues
+      into the assets that franchise received in that
+      later trade.
+    - If no later disposition exists and the player is
+      still on the current roster, the branch is marked
+      STILL HELD.
+    - If no disposition is found but the player is not
+      currently rostered, the branch is marked
+      NO DISPOSITION FOUND rather than inventing a drop.
 
-    1. Walk every linked Sleeper league season.
-    2. Scan transaction rounds 0 through 18.
-       - round 0 catches offseason / preseason movement.
-    3. Deduplicate transactions by transaction_id.
-    4. Record all completed trades, player moves, pick
-       moves and official drops.
-    5. Load every completed historical draft.
-    6. Resolve a canonical traded pick identity:
-           season + round + ORIGINAL roster
-       into the player eventually selected.
-    7. Inspect historical matchup payloads to determine
-       whether players_points and starters_points exist.
-    8. Mark trades eligible only after two full years.
+    PICK RULES
+    - A pick is identified by:
+          season + round + ORIGINAL roster
+    - If the pick is traded again, the branch continues
+      into the assets received for it.
+    - If it is used, it converts into the player selected.
+    - The selected player then follows the normal player
+      rules.
 
-    The next phase will consume this ledger and recursively
-    follow each received asset until the branch reaches:
-       - DROP
-       - STILL HELD
-       - TRADE -> new received assets
-       - PICK USED -> selected player
-       - PICK TRADED -> new received assets
+    BUNDLED TRADE RULE
+    - If two lineage assets are later sent together in the
+      same trade, the received return is followed ONCE.
+    - The second asset points to the already-followed
+      continuation. This prevents double-counting.
+
+    ELIGIBILITY
+    - Only trades at least two full years old are intended
+      for eventual "What We Know Now" grading.
     =====================================================
 */
 
@@ -52,6 +59,10 @@ const MAX_TRANSACTION_ROUND =
 
 const MIN_TRADE_AGE_YEARS =
     2;
+
+
+const MAX_LINEAGE_DEPTH =
+    40;
 
 
 let cachedDiagnostics =
@@ -129,8 +140,7 @@ const buildDiagnostics =
                 seasons.map(
                     season =>
                         loadSeasonPackage(
-                            season,
-                            teamManagers
+                            season
                         )
                 )
             );
@@ -143,17 +153,13 @@ const buildDiagnostics =
                         item.transactions
                 )
             )
+                .filter(
+                    transaction =>
+                        transaction.status !==
+                        'failed'
+                )
                 .sort(
-                    (
-                        a,
-                        b
-                    ) =>
-                        Number(
-                            a.status_updated
-                        ) -
-                        Number(
-                            b.status_updated
-                        )
+                    compareTransactionsAscending
                 );
 
 
@@ -161,19 +167,48 @@ const buildDiagnostics =
             allTransactions.filter(
                 transaction =>
                     transaction.type ===
-                        'trade' &&
-                    transaction.status !==
-                        'failed'
+                    'trade'
+            );
+
+
+        const drafts =
+            seasonPackages.flatMap(
+                item =>
+                    item.drafts
             );
 
 
         const draftPickLookup =
             buildDraftPickLookup(
-                seasonPackages.flatMap(
-                    item =>
-                        item.drafts
-                )
+                drafts
             );
+
+
+        const latestSeason =
+            seasons.length
+                ? seasons[
+                    seasons.length -
+                    1
+                ]
+                : null;
+
+
+        const currentRosterPlayers =
+            latestSeason
+                ? await loadCurrentRosterPlayers(
+                    latestSeason.leagueID
+                )
+                : {};
+
+
+        const lineageContext = {
+            transactions:
+                allTransactions,
+
+            draftPickLookup,
+
+            currentRosterPlayers
+        };
 
 
         const trades =
@@ -184,7 +219,9 @@ const buildDiagnostics =
 
                         teamManagers,
 
-                        draftPickLookup
+                        draftPickLookup,
+
+                        lineageContext
                     })
             );
 
@@ -196,7 +233,16 @@ const buildDiagnostics =
             );
 
 
+        const lineageStats =
+            summarizeLineages(
+                trades
+            );
+
+
         return {
+            phase:
+                2,
+
             generatedAt:
                 new Date()
                     .toISOString(),
@@ -218,20 +264,27 @@ const buildDiagnostics =
                     eligibleTrades.length,
 
                 completedDrafts:
-                    seasonPackages.reduce(
-                        (
-                            total,
-                            season
-                        ) =>
-                            total +
-                            season.drafts.length,
-                        0
-                    ),
+                    drafts.length,
 
                 resolvedDraftPicks:
                     Object.keys(
                         draftPickLookup
-                    ).length
+                    ).length,
+
+                lineageNodes:
+                    lineageStats.nodes,
+
+                lineageDrops:
+                    lineageStats.drops,
+
+                lineageRetrades:
+                    lineageStats.retrades,
+
+                lineageStillHeld:
+                    lineageStats.stillHeld,
+
+                unresolvedDispositions:
+                    lineageStats.unresolved
             },
 
             validations:
@@ -243,23 +296,13 @@ const buildDiagnostics =
             trades:
                 trades
                     .sort(
-                        (
-                            a,
-                            b
-                        ) =>
-                            b.timestamp -
-                            a.timestamp
+                        compareTradesDescending
                     ),
 
             eligibleTrades:
                 eligibleTrades
                     .sort(
-                        (
-                            a,
-                            b
-                        ) =>
-                            b.timestamp -
-                            a.timestamp
+                        compareTradesDescending
                     ),
 
             draftPickLookup
@@ -332,11 +375,6 @@ const getHistoricalLeagueChain =
                             ?.settings
                             ?.playoff_week_start
                     ) ||
-                    null,
-
-                draftID:
-                    leagueData
-                        ?.draft_id ||
                     null
             });
 
@@ -365,10 +403,7 @@ const getHistoricalLeagueChain =
 */
 
 const loadSeasonPackage =
-    async (
-        season,
-        teamManagers
-    ) => {
+    async season => {
 
         const [
             transactions,
@@ -397,21 +432,6 @@ const loadSeasonPackage =
                         'trade' &&
                     transaction.status !==
                         'failed'
-            );
-
-
-        const playerMoves =
-            transactions.reduce(
-                (
-                    total,
-                    transaction
-                ) =>
-                    total +
-                    Object.keys(
-                        transaction.adds ||
-                        {}
-                    ).length,
-                0
             );
 
 
@@ -475,8 +495,6 @@ const loadSeasonPackage =
 
                 trades:
                     tradeTransactions.length,
-
-                playerMoves,
 
                 officialDrops,
 
@@ -645,22 +663,6 @@ const dedupeTransactions =
     };
 
 
-/*
-    =====================================================
-    WHAT COUNTS AS A TRUE DROP?
-    =====================================================
-
-    In a trade, a player usually appears in BOTH:
-        drops[player] = sending roster
-        adds[player]  = receiving roster
-
-    That is a transfer, not a lineage-ending drop.
-
-    A true drop exists only when the player appears in
-    drops but NOT in adds.
-    =====================================================
-*/
-
 const countTrueDrops =
     transaction => {
 
@@ -762,8 +764,7 @@ const loadSeasonDrafts =
 
                             const [
                                 infoResponse,
-                                picksResponse,
-                                tradedResponse
+                                picksResponse
                             ] =
                                 await Promise.all([
                                     fetch(
@@ -776,14 +777,6 @@ const loadSeasonDrafts =
 
                                     fetch(
                                         `https://api.sleeper.app/v1/draft/${draftID}/picks`,
-                                        {
-                                            compress:
-                                                true
-                                        }
-                                    ),
-
-                                    fetch(
-                                        `https://api.sleeper.app/v1/draft/${draftID}/traded_picks`,
                                         {
                                             compress:
                                                 true
@@ -802,19 +795,12 @@ const loadSeasonDrafts =
 
                             const [
                                 info,
-                                picks,
-                                tradedPicks
+                                picks
                             ] =
                                 await Promise.all([
                                     infoResponse.json(),
 
-                                    picksResponse.json(),
-
-                                    tradedResponse.ok
-                                        ? tradedResponse.json()
-                                        : Promise.resolve(
-                                            []
-                                        )
+                                    picksResponse.json()
                                 ]);
 
 
@@ -833,6 +819,12 @@ const loadSeasonDrafts =
                                     draftInfo.type ||
                                     null,
 
+                                startTime:
+                                    normalizeTimestamp(
+                                        info.start_time ||
+                                        draftInfo.start_time
+                                    ),
+
                                 slotToRosterID:
                                     info
                                         .slot_to_roster_id ||
@@ -843,13 +835,6 @@ const loadSeasonDrafts =
                                         picks
                                     )
                                         ? picks
-                                        : [],
-
-                                tradedPicks:
-                                    Array.isArray(
-                                        tradedPicks
-                                    )
-                                        ? tradedPicks
                                         : []
                             };
                         }
@@ -870,16 +855,6 @@ const loadSeasonDrafts =
 /*
     =====================================================
     CANONICAL DRAFT PICK LOOKUP
-    =====================================================
-
-    Canonical identity:
-        SEASON | ROUND | ORIGINAL ROSTER
-
-    We derive ORIGINAL ROSTER from the draft slot using
-    slot_to_roster_id.
-
-    This allows a pick to move through multiple trades
-    without losing its identity.
     =====================================================
 */
 
@@ -955,6 +930,12 @@ const buildDraftPickLookup =
                     draftID:
                         draft.draftID,
 
+                    draftTimestamp:
+                        draft.startTime ||
+                        fallbackDraftTimestamp(
+                            draft.season
+                        ),
+
                     draftSlot:
                         slot,
 
@@ -1001,15 +982,84 @@ const makePickKey = (
 
 /*
     =====================================================
-    HISTORICAL MATCHUP PAYLOAD VALIDATION
+    CURRENT ROSTERS
     =====================================================
+*/
 
-    We inspect Week 1 of each archived season. The goal is
-    not to calculate production yet; it is to prove which
-    per-player score fields Sleeper preserved.
+const loadCurrentRosterPlayers =
+    async currentLeagueID => {
 
-    If Week 1 is empty, the validator also tries the final
-    regular-season week.
+        try {
+            const response =
+                await fetch(
+                    (
+                        `https://api.sleeper.app/v1/league/` +
+                        `${currentLeagueID}/rosters`
+                    ),
+                    {
+                        compress:
+                            true
+                    }
+                );
+
+
+            if (!response.ok) {
+                return {};
+            }
+
+
+            const rosters =
+                await response.json();
+
+
+            if (
+                !Array.isArray(
+                    rosters
+                )
+            ) {
+                return {};
+            }
+
+
+            const result =
+                {};
+
+
+            for (
+                const roster
+                of rosters
+            ) {
+                result[
+                    Number(
+                        roster.roster_id
+                    )
+                ] =
+                    new Set(
+                        (
+                            Array.isArray(
+                                roster.players
+                            )
+                                ? roster.players
+                                : []
+                        )
+                            .map(
+                                String
+                            )
+                    );
+            }
+
+
+            return result;
+        }
+        catch {
+            return {};
+        }
+    };
+
+
+/*
+    =====================================================
+    PHASE 1 PAYLOAD VALIDATION
     =====================================================
 */
 
@@ -1017,9 +1067,7 @@ const validateSeasonMatchupPayload =
     async season => {
 
         const candidateWeeks =
-            [
-                1
-            ];
+            [1];
 
 
         if (
@@ -1073,16 +1121,16 @@ const validateSeasonMatchupPayload =
                 }
 
 
-                const nonEmpty =
+                const row =
                     data.find(
-                        row =>
-                            row &&
+                        item =>
+                            item &&
                             (
                                 Array.isArray(
-                                    row.players
+                                    item.players
                                 ) ||
                                 Array.isArray(
-                                    row.starters
+                                    item.starters
                                 )
                             )
                     ) ||
@@ -1098,62 +1146,54 @@ const validateSeasonMatchupPayload =
 
                     hasPlayers:
                         Array.isArray(
-                            nonEmpty
+                            row
                                 ?.players
                         ),
 
                     hasStarters:
                         Array.isArray(
-                            nonEmpty
+                            row
                                 ?.starters
                         ),
 
                     hasPlayersPoints:
                         Boolean(
-                            nonEmpty &&
+                            row &&
                             Object.prototype
                                 .hasOwnProperty
                                 .call(
-                                    nonEmpty,
+                                    row,
                                     'players_points'
                                 )
                         ),
 
                     playersPointsType:
                         getValueType(
-                            nonEmpty
+                            row
                                 ?.players_points
                         ),
 
                     hasStartersPoints:
                         Boolean(
-                            nonEmpty &&
+                            row &&
                             Object.prototype
                                 .hasOwnProperty
                                 .call(
-                                    nonEmpty,
+                                    row,
                                     'starters_points'
                                 )
                         ),
 
                     startersPointsType:
                         getValueType(
-                            nonEmpty
+                            row
                                 ?.starters_points
-                        ),
-
-                    sampleKeys:
-                        nonEmpty
-                            ? Object.keys(
-                                nonEmpty
-                            )
-                                .sort()
-                            : []
+                        )
                 };
             }
             catch {
                 /*
-                    Try the next candidate week.
+                    Try next candidate.
                 */
             }
         }
@@ -1182,10 +1222,7 @@ const validateSeasonMatchupPayload =
                 false,
 
             startersPointsType:
-                'missing',
-
-            sampleKeys:
-                []
+                'missing'
         };
     };
 
@@ -1216,40 +1253,27 @@ const getValueType =
 
 /*
     =====================================================
-    DIGEST ONE TRADE
+    TRADE
     =====================================================
 */
 
 const digestTrade = ({
     transaction,
     teamManagers,
-    draftPickLookup
+    draftPickLookup,
+    lineageContext
 }) => {
 
     const timestamp =
-        Number(
+        normalizeTimestamp(
             transaction.status_updated
-        ) ||
-        0;
-
-
-    const date =
-        timestamp
-            ? new Date(
-                timestamp
-            )
-            : null;
+        );
 
 
     const season =
         Number(
             transaction
                 ._sourceSeason
-        ) ||
-        (
-            date
-                ? date.getFullYear()
-                : null
         );
 
 
@@ -1271,18 +1295,82 @@ const digestTrade = ({
 
     const participants =
         rosters.map(
-            rosterID =>
-                digestTradeParticipant({
+            rosterID => {
+
+                const rawAssets =
+                    extractParticipantAssets(
+                        transaction,
+                        rosterID,
+                        draftPickLookup
+                    );
+
+
+                /*
+                    This set is shared by every root asset
+                    for ONE participant in this original
+                    trade. It prevents a later bundled
+                    trade from spawning the same return
+                    multiple times.
+                */
+
+                const consumedReplacementTrades =
+                    new Set();
+
+
+                const receivedLineages =
+                    rawAssets
+                        .received
+                        .map(
+                            asset =>
+                                followAsset({
+                                    asset,
+
+                                    rosterID,
+
+                                    acquiredAt:
+                                        timestamp,
+
+                                    acquiredSeason:
+                                        season,
+
+                                    acquiredRound:
+                                        Number(
+                                            transaction
+                                                ._sourceRound
+                                        ),
+
+                                    depth:
+                                        0,
+
+                                    lineageContext,
+
+                                    consumedReplacementTrades,
+
+                                    path:
+                                        new Set()
+                                })
+                        );
+
+
+                return {
                     rosterID,
 
-                    season,
+                    team:
+                        getTeamIdentity(
+                            teamManagers,
+                            season,
+                            rosterID
+                        ),
 
-                    transaction,
+                    received:
+                        rawAssets.received,
 
-                    teamManagers,
+                    sent:
+                        rawAssets.sent,
 
-                    draftPickLookup
-                })
+                    receivedLineages
+                };
+            }
         );
 
 
@@ -1306,8 +1394,11 @@ const digestTrade = ({
         timestamp,
 
         date:
-            date
-                ? date.toISOString()
+            timestamp
+                ? new Date(
+                    timestamp
+                )
+                    .toISOString()
                 : null,
 
         ageYears:
@@ -1330,17 +1421,23 @@ const digestTrade = ({
 
 /*
     =====================================================
-    DIGEST ONE PARTICIPANT
+    EXTRACT ASSETS FOR ONE ROSTER IN A TRADE
     =====================================================
 */
 
-const digestTradeParticipant = ({
-    rosterID,
-    season,
+const extractParticipantAssets = (
     transaction,
-    teamManagers,
+    rosterID,
     draftPickLookup
-}) => {
+) => {
+
+    const received =
+        [];
+
+
+    const sent =
+        [];
+
 
     const adds =
         transaction.adds ||
@@ -1352,18 +1449,10 @@ const digestTradeParticipant = ({
         {};
 
 
-    const receivedPlayers =
-        [];
-
-
-    const sentPlayers =
-        [];
-
-
     for (
         const [
             playerID,
-            receivingRosterID
+            receivingRoster
         ]
         of Object.entries(
             adds
@@ -1371,12 +1460,12 @@ const digestTradeParticipant = ({
     ) {
         if (
             Number(
-                receivingRosterID
+                receivingRoster
             ) ===
             rosterID
         ) {
-            receivedPlayers.push(
-                String(
+            received.push(
+                makePlayerAsset(
                     playerID
                 )
             );
@@ -1387,7 +1476,7 @@ const digestTradeParticipant = ({
     for (
         const [
             playerID,
-            sendingRosterID
+            sendingRoster
         ]
         of Object.entries(
             drops
@@ -1395,9 +1484,9 @@ const digestTradeParticipant = ({
     ) {
         if (
             Number(
-                sendingRosterID
+                sendingRoster
             ) ===
-            rosterID &&
+                rosterID &&
             Object.prototype
                 .hasOwnProperty
                 .call(
@@ -1405,21 +1494,13 @@ const digestTradeParticipant = ({
                     playerID
                 )
         ) {
-            sentPlayers.push(
-                String(
+            sent.push(
+                makePlayerAsset(
                     playerID
                 )
             );
         }
     }
-
-
-    const receivedPicks =
-        [];
-
-
-    const sentPicks =
-        [];
 
 
     const draftPicks =
@@ -1434,8 +1515,8 @@ const digestTradeParticipant = ({
         const pick
         of draftPicks
     ) {
-        const canonical =
-            digestPickMove(
+        const asset =
+            makePickAsset(
                 pick,
                 draftPickLookup
             );
@@ -1447,8 +1528,8 @@ const digestTradeParticipant = ({
             ) ===
             rosterID
         ) {
-            receivedPicks.push(
-                canonical
+            received.push(
+                asset
             );
         }
 
@@ -1459,49 +1540,85 @@ const digestTradeParticipant = ({
             ) ===
             rosterID
         ) {
-            sentPicks.push(
-                canonical
+            sent.push(
+                asset
             );
         }
     }
 
 
-    return {
-        rosterID,
+    const waiverBudget =
+        Array.isArray(
+            transaction.waiver_budget
+        )
+            ? transaction.waiver_budget
+            : [];
 
-        team:
-            getTeamIdentity(
-                teamManagers,
-                season,
-                rosterID
-            ),
 
-        received: {
-            players:
-                receivedPlayers,
+    for (
+        const budget
+        of waiverBudget
+    ) {
+        if (
+            Number(
+                budget.receiver
+            ) ===
+            rosterID
+        ) {
+            received.push({
+                assetType:
+                    'budget',
 
-            picks:
-                receivedPicks
-        },
-
-        sent: {
-            players:
-                sentPlayers,
-
-            picks:
-                sentPicks
+                amount:
+                    Number(
+                        budget.amount
+                    ) ||
+                    0
+            });
         }
+
+
+        if (
+            Number(
+                budget.sender
+            ) ===
+            rosterID
+        ) {
+            sent.push({
+                assetType:
+                    'budget',
+
+                amount:
+                    Number(
+                        budget.amount
+                    ) ||
+                    0
+            });
+        }
+    }
+
+
+    return {
+        received,
+
+        sent
     };
 };
 
 
-/*
-    =====================================================
-    PICK MOVE
-    =====================================================
-*/
+const makePlayerAsset =
+    playerID => ({
+        assetType:
+            'player',
 
-const digestPickMove = (
+        playerID:
+            String(
+                playerID
+            )
+    });
+
+
+const makePickAsset = (
     pick,
     draftPickLookup
 ) => {
@@ -1533,6 +1650,9 @@ const digestPickMove = (
 
 
     return {
+        assetType:
+            'pick',
+
         key,
 
         season,
@@ -1541,24 +1661,891 @@ const digestPickMove = (
 
         originalRosterID,
 
-        previousOwnerRosterID:
-            Number(
-                pick.previous_owner_id
-            ) ||
-            null,
-
-        newOwnerRosterID:
-            Number(
-                pick.owner_id
-            ) ||
-            null,
-
         resolved:
             draftPickLookup[
                 key
             ] ||
             null
     };
+};
+
+
+/*
+    =====================================================
+    RECURSIVE FOLLOWER
+    =====================================================
+*/
+
+const followAsset = ({
+    asset,
+    rosterID,
+    acquiredAt,
+    acquiredSeason,
+    acquiredRound,
+    depth,
+    lineageContext,
+    consumedReplacementTrades,
+    path
+}) => {
+
+    if (
+        depth >
+        MAX_LINEAGE_DEPTH
+    ) {
+        return {
+            ...asset,
+
+            status:
+                'DEPTH LIMIT',
+
+            children:
+                []
+        };
+    }
+
+
+    const pathKey =
+        (
+            `${assetIdentity(asset)}|` +
+            `${rosterID}|` +
+            `${acquiredAt}`
+        );
+
+
+    if (
+        path.has(
+            pathKey
+        )
+    ) {
+        return {
+            ...asset,
+
+            status:
+                'CYCLE BLOCKED',
+
+            children:
+                []
+        };
+    }
+
+
+    const nextPath =
+        new Set(
+            path
+        );
+
+
+    nextPath.add(
+        pathKey
+    );
+
+
+    if (
+        asset.assetType ===
+        'player'
+    ) {
+        return followPlayer({
+            asset,
+
+            rosterID,
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            depth,
+
+            lineageContext,
+
+            consumedReplacementTrades,
+
+            path:
+                nextPath
+        });
+    }
+
+
+    if (
+        asset.assetType ===
+        'pick'
+    ) {
+        return followPick({
+            asset,
+
+            rosterID,
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            depth,
+
+            lineageContext,
+
+            consumedReplacementTrades,
+
+            path:
+                nextPath
+        });
+    }
+
+
+    if (
+        asset.assetType ===
+        'budget'
+    ) {
+        return {
+            ...asset,
+
+            status:
+                'FAAB RECEIVED',
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            children:
+                []
+        };
+    }
+
+
+    return {
+        ...asset,
+
+        status:
+            'UNKNOWN ASSET',
+
+        children:
+            []
+    };
+};
+
+
+/*
+    =====================================================
+    PLAYER LINEAGE
+    =====================================================
+*/
+
+const followPlayer = ({
+    asset,
+    rosterID,
+    acquiredAt,
+    acquiredSeason,
+    acquiredRound,
+    depth,
+    lineageContext,
+    consumedReplacementTrades,
+    path
+}) => {
+
+    const disposition =
+        findPlayerDisposition({
+            playerID:
+                asset.playerID,
+
+            rosterID,
+
+            after:
+                acquiredAt,
+
+            transactions:
+                lineageContext
+                    .transactions
+        });
+
+
+    if (!disposition) {
+        const currentRoster =
+            lineageContext
+                .currentRosterPlayers
+                ?.[rosterID];
+
+
+        const stillHeld =
+            currentRoster instanceof
+                Set &&
+            currentRoster.has(
+                String(
+                    asset.playerID
+                )
+            );
+
+
+        return {
+            ...asset,
+
+            rosterID,
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            status:
+                stillHeld
+                    ? 'STILL HELD'
+                    : 'NO DISPOSITION FOUND',
+
+            disposition:
+                null,
+
+            children:
+                []
+        };
+    }
+
+
+    const transaction =
+        disposition.transaction;
+
+
+    const timestamp =
+        normalizeTimestamp(
+            transaction.status_updated
+        );
+
+
+    /*
+        Any non-trade removal is an official drop from
+        this franchise's lineage, even if Sleeper happens
+        to show another roster adding the player in the
+        same transaction object.
+    */
+
+    if (
+        transaction.type !==
+        'trade' ||
+        !disposition.wasTransferred
+    ) {
+        return {
+            ...asset,
+
+            rosterID,
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            status:
+                'DROPPED',
+
+            disposition: {
+                transactionID:
+                    String(
+                        transaction
+                            .transaction_id
+                    ),
+
+                date:
+                    timestamp
+                        ? new Date(
+                            timestamp
+                        )
+                            .toISOString()
+                        : null,
+
+                season:
+                    transaction
+                        ._sourceSeason,
+
+                round:
+                    transaction
+                        ._sourceRound
+            },
+
+            children:
+                []
+        };
+    }
+
+
+    return continueThroughTrade({
+        asset,
+
+        rosterID,
+
+        acquiredAt,
+
+        acquiredSeason,
+
+        acquiredRound,
+
+        transaction,
+
+        depth,
+
+        lineageContext,
+
+        consumedReplacementTrades,
+
+        path
+    });
+};
+
+
+/*
+    =====================================================
+    PICK LINEAGE
+    =====================================================
+*/
+
+const followPick = ({
+    asset,
+    rosterID,
+    acquiredAt,
+    acquiredSeason,
+    acquiredRound,
+    depth,
+    lineageContext,
+    consumedReplacementTrades,
+    path
+}) => {
+
+    const transfer =
+        findPickTransfer({
+            pickKey:
+                asset.key,
+
+            rosterID,
+
+            after:
+                acquiredAt,
+
+            transactions:
+                lineageContext
+                    .transactions
+        });
+
+
+    if (transfer) {
+        return continueThroughTrade({
+            asset,
+
+            rosterID,
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            transaction:
+                transfer.transaction,
+
+            depth,
+
+            lineageContext,
+
+            consumedReplacementTrades,
+
+            path
+        });
+    }
+
+
+    const resolved =
+        asset.resolved ||
+        lineageContext
+            .draftPickLookup
+            ?.[asset.key] ||
+        null;
+
+
+    if (
+        resolved &&
+        resolved.selectedPlayerID
+    ) {
+        const draftTimestamp =
+            resolved.draftTimestamp ||
+            fallbackDraftTimestamp(
+                resolved.season
+            );
+
+
+        if (
+            Number(
+                resolved.selectingRosterID
+            ) !==
+            Number(
+                rosterID
+            )
+        ) {
+            return {
+                ...asset,
+
+                rosterID,
+
+                acquiredAt,
+
+                acquiredSeason,
+
+                acquiredRound,
+
+                status:
+                    'USED BY DIFFERENT ROSTER',
+
+                selectedPlayerID:
+                    resolved.selectedPlayerID,
+
+                selectedByRosterID:
+                    resolved.selectingRosterID,
+
+                children:
+                    []
+            };
+        }
+
+
+        const selectedPlayer =
+            makePlayerAsset(
+                resolved.selectedPlayerID
+            );
+
+
+        return {
+            ...asset,
+
+            rosterID,
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            status:
+                'USED',
+
+            selectedPlayerID:
+                resolved.selectedPlayerID,
+
+            draftSlot:
+                resolved.draftSlot,
+
+            pickNo:
+                resolved.pickNo,
+
+            disposition: {
+                date:
+                    draftTimestamp
+                        ? new Date(
+                            draftTimestamp
+                        )
+                            .toISOString()
+                        : null,
+
+                season:
+                    resolved.season
+            },
+
+            children: [
+                followAsset({
+                    asset:
+                        selectedPlayer,
+
+                    rosterID,
+
+                    acquiredAt:
+                        draftTimestamp,
+
+                    acquiredSeason:
+                        resolved.season,
+
+                    acquiredRound:
+                        0,
+
+                    depth:
+                        depth + 1,
+
+                    lineageContext,
+
+                    consumedReplacementTrades,
+
+                    path
+                })
+            ]
+        };
+    }
+
+
+    return {
+        ...asset,
+
+        rosterID,
+
+        acquiredAt,
+
+        acquiredSeason,
+
+        acquiredRound,
+
+        status:
+            'UNUSED / UNRESOLVED',
+
+        children:
+            []
+    };
+};
+
+
+/*
+    =====================================================
+    CONTINUE THROUGH A LATER TRADE
+    =====================================================
+*/
+
+const continueThroughTrade = ({
+    asset,
+    rosterID,
+    acquiredAt,
+    acquiredSeason,
+    acquiredRound,
+    transaction,
+    depth,
+    lineageContext,
+    consumedReplacementTrades,
+    path
+}) => {
+
+    const tradeID =
+        String(
+            transaction
+                .transaction_id
+        );
+
+
+    const timestamp =
+        normalizeTimestamp(
+            transaction.status_updated
+        );
+
+
+    /*
+        If another asset in this same original lineage
+        already followed this later bundled trade, do not
+        duplicate all of its descendants.
+    */
+
+    if (
+        consumedReplacementTrades.has(
+            tradeID
+        )
+    ) {
+        return {
+            ...asset,
+
+            rosterID,
+
+            acquiredAt,
+
+            acquiredSeason,
+
+            acquiredRound,
+
+            status:
+                'TRADED - SHARED CONTINUATION',
+
+            disposition: {
+                transactionID:
+                    tradeID,
+
+                date:
+                    timestamp
+                        ? new Date(
+                            timestamp
+                        )
+                            .toISOString()
+                        : null,
+
+                season:
+                    transaction
+                        ._sourceSeason,
+
+                round:
+                    transaction
+                        ._sourceRound
+            },
+
+            sharedContinuationTradeID:
+                tradeID,
+
+            children:
+                []
+        };
+    }
+
+
+    consumedReplacementTrades.add(
+        tradeID
+    );
+
+
+    const assets =
+        extractParticipantAssets(
+            transaction,
+            rosterID,
+            lineageContext
+                .draftPickLookup
+        )
+            .received;
+
+
+    const children =
+        assets.map(
+            nextAsset =>
+                followAsset({
+                    asset:
+                        nextAsset,
+
+                    rosterID,
+
+                    acquiredAt:
+                        timestamp,
+
+                    acquiredSeason:
+                        Number(
+                            transaction
+                                ._sourceSeason
+                        ),
+
+                    acquiredRound:
+                        Number(
+                            transaction
+                                ._sourceRound
+                        ),
+
+                    depth:
+                        depth + 1,
+
+                    lineageContext,
+
+                    consumedReplacementTrades,
+
+                    path
+                })
+        );
+
+
+    return {
+        ...asset,
+
+        rosterID,
+
+        acquiredAt,
+
+        acquiredSeason,
+
+        acquiredRound,
+
+        status:
+            assets.length
+                ? 'TRADED'
+                : 'TRADED - NO TRACKED RETURN',
+
+        disposition: {
+            transactionID:
+                tradeID,
+
+            date:
+                timestamp
+                    ? new Date(
+                        timestamp
+                    )
+                        .toISOString()
+                    : null,
+
+            season:
+                transaction
+                    ._sourceSeason,
+
+            round:
+                transaction
+                    ._sourceRound
+        },
+
+        replacementAssets:
+            assets.length,
+
+        children
+    };
+};
+
+
+/*
+    =====================================================
+    FIND PLAYER DISPOSITION
+    =====================================================
+*/
+
+const findPlayerDisposition = ({
+    playerID,
+    rosterID,
+    after,
+    transactions
+}) => {
+
+    for (
+        const transaction
+        of transactions
+    ) {
+        const timestamp =
+            normalizeTimestamp(
+                transaction.status_updated
+            );
+
+
+        if (
+            timestamp <=
+            after
+        ) {
+            continue;
+        }
+
+
+        const drops =
+            transaction.drops ||
+            {};
+
+
+        if (
+            Number(
+                drops[
+                    playerID
+                ]
+            ) !==
+            Number(
+                rosterID
+            )
+        ) {
+            continue;
+        }
+
+
+        const adds =
+            transaction.adds ||
+            {};
+
+
+        const wasTransferred =
+            Object.prototype
+                .hasOwnProperty
+                .call(
+                    adds,
+                    playerID
+                ) &&
+            Number(
+                adds[
+                    playerID
+                ]
+            ) !==
+            Number(
+                rosterID
+            );
+
+
+        return {
+            transaction,
+
+            wasTransferred
+        };
+    }
+
+
+    return null;
+};
+
+
+/*
+    =====================================================
+    FIND PICK TRANSFER
+    =====================================================
+*/
+
+const findPickTransfer = ({
+    pickKey,
+    rosterID,
+    after,
+    transactions
+}) => {
+
+    for (
+        const transaction
+        of transactions
+    ) {
+        const timestamp =
+            normalizeTimestamp(
+                transaction.status_updated
+            );
+
+
+        if (
+            timestamp <=
+            after
+        ) {
+            continue;
+        }
+
+
+        if (
+            transaction.type !==
+            'trade'
+        ) {
+            continue;
+        }
+
+
+        const picks =
+            Array.isArray(
+                transaction.draft_picks
+            )
+                ? transaction.draft_picks
+                : [];
+
+
+        for (
+            const pick
+            of picks
+        ) {
+            const key =
+                makePickKey(
+                    pick.season,
+                    pick.round,
+                    pick.roster_id
+                );
+
+
+            if (
+                key ===
+                    pickKey &&
+                Number(
+                    pick.previous_owner_id
+                ) ===
+                    Number(
+                        rosterID
+                    )
+            ) {
+                return {
+                    transaction,
+
+                    pick
+                };
+            }
+        }
+    }
+
+
+    return null;
 };
 
 
@@ -1618,9 +2605,210 @@ const getTeamIdentity = (
 
 /*
     =====================================================
-    AGE
+    SUMMARY
     =====================================================
 */
+
+const summarizeLineages =
+    trades => {
+
+        const summary = {
+            nodes:
+                0,
+
+            drops:
+                0,
+
+            retrades:
+                0,
+
+            stillHeld:
+                0,
+
+            unresolved:
+                0
+        };
+
+
+        const visit =
+            node => {
+
+                if (!node) {
+                    return;
+                }
+
+
+                summary.nodes++;
+
+
+                if (
+                    node.status ===
+                    'DROPPED'
+                ) {
+                    summary.drops++;
+                }
+
+
+                if (
+                    node.status ===
+                        'TRADED' ||
+                    node.status ===
+                        'TRADED - SHARED CONTINUATION' ||
+                    node.status ===
+                        'TRADED - NO TRACKED RETURN'
+                ) {
+                    summary.retrades++;
+                }
+
+
+                if (
+                    node.status ===
+                    'STILL HELD'
+                ) {
+                    summary.stillHeld++;
+                }
+
+
+                if (
+                    node.status ===
+                        'NO DISPOSITION FOUND' ||
+                    node.status ===
+                        'USED BY DIFFERENT ROSTER' ||
+                    node.status ===
+                        'UNUSED / UNRESOLVED'
+                ) {
+                    summary.unresolved++;
+                }
+
+
+                for (
+                    const child
+                    of node.children ||
+                    []
+                ) {
+                    visit(
+                        child
+                    );
+                }
+            };
+
+
+        for (
+            const trade
+            of trades
+        ) {
+            for (
+                const participant
+                of trade.participants
+            ) {
+                for (
+                    const root
+                    of participant
+                        .receivedLineages
+                ) {
+                    visit(
+                        root
+                    );
+                }
+            }
+        }
+
+
+        return summary;
+    };
+
+
+/*
+    =====================================================
+    IDENTITIES / TIME
+    =====================================================
+*/
+
+const assetIdentity =
+    asset => {
+
+        if (
+            asset.assetType ===
+            'player'
+        ) {
+            return (
+                `PLAYER:${asset.playerID}`
+            );
+        }
+
+
+        if (
+            asset.assetType ===
+            'pick'
+        ) {
+            return (
+                `PICK:${asset.key}`
+            );
+        }
+
+
+        if (
+            asset.assetType ===
+            'budget'
+        ) {
+            return (
+                `BUDGET:${asset.amount}`
+            );
+        }
+
+
+        return 'UNKNOWN';
+    };
+
+
+const normalizeTimestamp =
+    value => {
+
+        const number =
+            Number(
+                value
+            );
+
+
+        if (
+            !Number.isFinite(
+                number
+            ) ||
+            number <= 0
+        ) {
+            return 0;
+        }
+
+
+        /*
+            Sleeper timestamps are generally milliseconds.
+            Convert seconds if necessary.
+        */
+
+        return number <
+            100000000000
+            ? number * 1000
+            : number;
+    };
+
+
+const fallbackDraftTimestamp =
+    season => {
+
+        return new Date(
+            Number(
+                season
+            ),
+            4,
+            1,
+            12,
+            0,
+            0,
+            0
+        )
+            .getTime();
+    };
+
 
 const isOldEnough =
     timestamp => {
@@ -1677,3 +2865,31 @@ const getAgeYears =
         ) /
         100;
     };
+
+
+const compareTransactionsAscending = (
+    a,
+    b
+) => {
+
+    return (
+        normalizeTimestamp(
+            a.status_updated
+        ) -
+        normalizeTimestamp(
+            b.status_updated
+        )
+    );
+};
+
+
+const compareTradesDescending = (
+    a,
+    b
+) => {
+
+    return (
+        b.timestamp -
+        a.timestamp
+    );
+};
