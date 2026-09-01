@@ -1,16 +1,12 @@
-import {
-    getLeagueTeamManagers,
-    managers,
-} from '$lib/utils/helper';
+import { getLeagueTeamManagers } from '$lib/utils/helper';
+import { buildManagers } from '$lib/utils/helperFunctions/autoManagers';
 
 export async function load() {
-    if(!managers.length) return {managers};
-    const leagueTeamManagersData = getLeagueTeamManagers();
+    const leagueTeamManagers = await getLeagueTeamManagers();
+    const managers = buildManagers(leagueTeamManagers);
 
-    const props = {
+    return {
         managers,
-        leagueTeamManagersData
-    }
-
-    return props;
+        leagueTeamManagersData: Promise.resolve(leagueTeamManagers)
+    };
 }
