@@ -54,6 +54,19 @@ import {
 
     Projection differences below five points are treated
     as toss-ups, not true favorites/underdogs.
+
+    PLAYOFF PLACEMENT
+
+    Sleeper's winners_bracket "p" field identifies the
+    placement game:
+        p = 1 -> Championship
+        p = 3 -> Third Place
+        p = 5 -> Fifth Place
+        p = 7 -> Seventh Place
+        etc.
+
+    This prevents a third-place game in the final playoff
+    week from being mislabeled or scored as a championship.
     =====================================================
 */
 
@@ -666,6 +679,9 @@ const processRegularWeek = ({
                 playoffLabel:
                     null,
 
+                playoffPlacement:
+                    null,
+
                 teamManagers,
 
                 scoringSettings
@@ -862,6 +878,21 @@ const loadWinnersBracketGames =
                 );
 
 
+            const placement =
+                Number.isFinite(
+                    Number(
+                        node.p
+                    )
+                ) &&
+                Number(
+                    node.p
+                ) > 0
+                    ? Number(
+                        node.p
+                    )
+                    : null;
+
+
             const weekData =
                 weekByRound[
                     round
@@ -930,8 +961,12 @@ const loadWinnersBracketGames =
                     playoffLabel:
                         getPlayoffLabel(
                             round,
-                            maxRound
+                            maxRound,
+                            placement
                         ),
+
+                    playoffPlacement:
+                        placement,
 
                     teamManagers,
 
@@ -1014,6 +1049,7 @@ const createGame = ({
     week,
     type,
     playoffLabel,
+    playoffPlacement,
     teamManagers,
     scoringSettings
 }) => {
@@ -1151,6 +1187,8 @@ const createGame = ({
         type,
 
         playoffLabel,
+
+        playoffPlacement,
 
         winnerRosterID,
 
@@ -1735,6 +1773,16 @@ const calculateImpact = ({
         =================================================
         PLAYOFF SIGNIFICANCE
         =================================================
+
+        Every winners-bracket playoff game starts at +3.
+
+        Semifinal = +6.
+
+        ONLY the actual Sleeper p=1 Championship receives
+        the special +10 win / +8 loss bonus.
+
+        Third-place and other placement games therefore
+        remain ordinary +3 playoff games.
     */
 
     if (
@@ -3064,6 +3112,11 @@ const getImpactLabel = ({
     shortSignal,
     mediumSignal
 }) => {
+    /*
+        Only a game whose bracket placement resolves to
+        Championship can receive a championship headline.
+    */
+
     if (
         current.playoffLabel ===
         'Championship'
@@ -3156,6 +3209,9 @@ const createImpactEntry = (
 
         playoffLabel:
             game.playoffLabel,
+
+        playoffPlacement:
+            game.playoffPlacement,
 
         managerID:
             game.managerID,
@@ -3590,12 +3646,53 @@ const getSleeperPoints =
     =====================================================
     PLAYOFF LABEL
     =====================================================
+
+    Sleeper winners_bracket node.p identifies placement.
+
+    p=1 is the title game.
+    p=3 is the third-place game.
+    p=5 is the fifth-place game, etc.
+
+    Earlier rounds generally have no p and use the normal
+    round-relative labels.
+    =====================================================
 */
 
 const getPlayoffLabel = (
     round,
-    finalRound
+    finalRound,
+    placement = null
 ) => {
+    const parsedPlacement =
+        Number(
+            placement
+        );
+
+
+    if (
+        Number.isFinite(
+            parsedPlacement
+        ) &&
+        parsedPlacement > 0
+    ) {
+        if (
+            parsedPlacement === 1
+        ) {
+            return 'Championship';
+        }
+
+
+        return (
+            `${ordinalWord(parsedPlacement)} Place`
+        );
+    }
+
+
+    /*
+        Fallback for historical bracket data in which
+        Sleeper may not supply p on the title node.
+    */
+
     if (
         round ===
         finalRound
@@ -3624,6 +3721,110 @@ const getPlayoffLabel = (
         `Playoff Round ${round}`
     );
 };
+
+
+const ordinalWord =
+    value => {
+
+        const number =
+            Number(
+                value
+            );
+
+
+        const common = {
+            1:
+                'First',
+
+            2:
+                'Second',
+
+            3:
+                'Third',
+
+            4:
+                'Fourth',
+
+            5:
+                'Fifth',
+
+            6:
+                'Sixth',
+
+            7:
+                'Seventh',
+
+            8:
+                'Eighth',
+
+            9:
+                'Ninth',
+
+            10:
+                'Tenth',
+
+            11:
+                'Eleventh',
+
+            12:
+                'Twelfth'
+        };
+
+
+        if (
+            common[
+                number
+            ]
+        ) {
+            return common[
+                number
+            ];
+        }
+
+
+        const mod100 =
+            number %
+            100;
+
+
+        const mod10 =
+            number %
+            10;
+
+
+        let suffix =
+            'th';
+
+
+        if (
+            mod100 < 11 ||
+            mod100 > 13
+        ) {
+            if (
+                mod10 === 1
+            ) {
+                suffix =
+                    'st';
+            }
+            else if (
+                mod10 === 2
+            ) {
+                suffix =
+                    'nd';
+            }
+            else if (
+                mod10 === 3
+            ) {
+                suffix =
+                    'rd';
+            }
+        }
+
+
+        return (
+            `${number}${suffix}`
+        );
+    };
 
 
 /*
