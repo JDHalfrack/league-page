@@ -5,33 +5,33 @@ import { getLeagueTeamManagers } from './leagueTeamManagers';
 
 /*
     =====================================================
-    HISTORICAL TRADE ANALYZER - PHASE 4
+    HISTORICAL TRADE ANALYZER - PHASE 5
     =====================================================
 
-    Phase 4 keeps the recursive ASSET LINEAGE and realized
-    roster points from Phase 3, then normalizes each player
-    stint against active-rostered players at the SAME
-    POSITION over the SAME WEEKS.
+    Phase 5 keeps the complete lineage and positional
+    normalization from Phase 4, then scores each ELIGIBLE
+    trade side against every other eligible trade side in
+    league history.
 
-    The two player-level outputs are:
+    PLAYER LEVEL
+    - Raw rostered points
+    - Same-position 0-100 Position Score
+    - Additive Positional Value Units
 
-    POSITION SCORE (0-100)
-    - Percentile rank of that player's total points against
-      all same-position players who appeared on an active
-      matchup roster during the exact ownership window.
+    TRADE-SIDE LEVEL
+    - Sum every descendant player's Positional Value Units
+    - Rank that complete return against all other eligible
+      historical trade sides
+    - Convert the historical rank to a 0-100
+      WHAT WE KNOW NOW score
 
-    POSITIONAL VALUE UNITS
-    - positionScore / 100 * rosteredWeeks
-    - This is intentionally additive across lineage nodes.
-    - It rewards both quality and useful duration without
-      letting QB raw scoring automatically dominate TE/RB/WR.
+    COMPARATIVE RESULT
+    - EVEN: score gap <= 5
+    - SLIGHT EDGE: score gap > 5 and <= 15
+    - CLEAR WIN: score gap > 15 and <= 30
+    - LANDSLIDE: score gap > 30
 
-    Sleeper matchup `players` is treated as the active roster
-    pool for each week. Historical reserve/IR membership is
-    not independently reconstructed by the matchup endpoint,
-    so the source validation remains visible.
-
-    It still does NOT assign final trade grades.
+    Scores remain independent rather than zero-sum.
 
     PLAYER RULES
     - A player received in a trade is followed forward
@@ -84,6 +84,18 @@ const MIN_TRADE_AGE_YEARS =
 
 const MAX_LINEAGE_DEPTH =
     40;
+
+
+const EVEN_MAX_GAP =
+    5;
+
+
+const SLIGHT_EDGE_MAX_GAP =
+    15;
+
+
+const CLEAR_WIN_MAX_GAP =
+    30;
 
 
 let cachedDiagnostics =
@@ -269,6 +281,23 @@ const buildDiagnostics =
             );
 
 
+        const tradeSideScoring =
+            scoreEligibleTradeSides(
+                eligibleTrades
+            );
+
+
+        for (
+            const trade
+            of eligibleTrades
+        ) {
+            trade.comparison =
+                buildTradeComparison(
+                    trade
+                );
+        }
+
+
         const lineageStats =
             summarizeLineages(
                 trades
@@ -277,7 +306,7 @@ const buildDiagnostics =
 
         return {
             phase:
-                4,
+                5,
 
             generatedAt:
                 new Date()
@@ -338,7 +367,27 @@ const buildDiagnostics =
                     lineageStats.missingPositionStints,
 
                 positionalValueUnits:
-                    lineageStats.positionalValueUnits
+                    lineageStats.positionalValueUnits,
+
+                scoredTradeSides:
+                    tradeSideScoring.scoredSides,
+
+                tradeSideScorePool:
+                    tradeSideScoring.poolSize,
+
+                averageWhatWeKnowNow:
+                    tradeSideScoring.averageScore
+            },
+
+            scoreMethodology: {
+                evenMaxGap:
+                    EVEN_MAX_GAP,
+
+                slightEdgeMaxGap:
+                    SLIGHT_EDGE_MAX_GAP,
+
+                clearWinMaxGap:
+                    CLEAR_WIN_MAX_GAP
             },
 
             validations:
@@ -4308,6 +4357,383 @@ const summarizeParticipantProduction =
                 ),
 
             normalizedPlayerStints
+        };
+    };
+
+
+
+/*
+    =====================================================
+    PHASE 5 - TRADE-SIDE HISTORICAL SCORE
+    =====================================================
+*/
+
+const scoreEligibleTradeSides =
+    eligibleTrades => {
+
+        const sides =
+            [];
+
+
+        for (
+            const trade
+            of eligibleTrades ||
+            []
+        ) {
+            for (
+                const participant
+                of trade.participants ||
+                []
+            ) {
+                sides.push({
+                    trade,
+
+                    participant,
+
+                    value:
+                        Number(
+                            participant
+                                ?.realizedProduction
+                                ?.positionalValue
+                        ) ||
+                        0
+                });
+            }
+        }
+
+
+        const values =
+            sides
+                .map(
+                    side =>
+                        side.value
+                )
+                .sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        a -
+                        b
+                );
+
+
+        const poolSize =
+            values.length;
+
+
+        let scoreTotal =
+            0;
+
+
+        for (
+            const side
+            of sides
+        ) {
+            const less =
+                values.filter(
+                    value =>
+                        value <
+                        side.value
+                ).length;
+
+
+            const equal =
+                values.filter(
+                    value =>
+                        Math.abs(
+                            value -
+                            side.value
+                        ) <
+                        0.000001
+                ).length;
+
+
+            const greater =
+                values.filter(
+                    value =>
+                        value >
+                        side.value
+                ).length;
+
+
+            let score =
+                null;
+
+
+            if (
+                poolSize ===
+                1
+            ) {
+                score =
+                    100;
+            }
+            else if (
+                poolSize >
+                1
+            ) {
+                const averageAscendingIndex =
+                    less +
+                    (
+                        Math.max(
+                            1,
+                            equal
+                        ) -
+                        1
+                    ) /
+                    2;
+
+
+                score =
+                    roundScore(
+                        100 *
+                        averageAscendingIndex /
+                        (
+                            poolSize -
+                            1
+                        )
+                    );
+            }
+
+
+            side.participant.whatWeKnowNow = {
+                score,
+
+                positionalValue:
+                    roundValue(
+                        side.value
+                    ),
+
+                historicalRank:
+                    poolSize
+                        ? greater +
+                            1
+                        : null,
+
+                historicalRankEnd:
+                    poolSize
+                        ? greater +
+                            Math.max(
+                                1,
+                                equal
+                            )
+                        : null,
+
+                poolSize
+            };
+
+
+            if (
+                score !==
+                    null &&
+                score !==
+                    undefined
+            ) {
+                scoreTotal +=
+                    score;
+            }
+        }
+
+
+        return {
+            scoredSides:
+                sides.length,
+
+            poolSize,
+
+            averageScore:
+                sides.length
+                    ? roundScore(
+                        scoreTotal /
+                        sides.length
+                    )
+                    : null
+        };
+    };
+
+
+const buildTradeComparison =
+    trade => {
+
+        const scored =
+            (
+                trade.participants ||
+                []
+            )
+                .filter(
+                    participant =>
+                        participant
+                            ?.whatWeKnowNow
+                            ?.score !==
+                            null &&
+                        participant
+                            ?.whatWeKnowNow
+                            ?.score !==
+                            undefined
+                )
+                .map(
+                    participant => ({
+                        rosterID:
+                            participant.rosterID,
+
+                        team:
+                            participant.team,
+
+                        score:
+                            Number(
+                                participant
+                                    .whatWeKnowNow
+                                    .score
+                            )
+                    })
+                )
+                .sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        b.score -
+                        a.score
+                );
+
+
+        if (
+            scored.length <
+            2
+        ) {
+            return {
+                label:
+                    'NO COMPARISON',
+
+                leaderRosterIDs:
+                    scored.map(
+                        item =>
+                            item.rosterID
+                    ),
+
+                leaderTeamNames:
+                    scored.map(
+                        item =>
+                            item.team
+                                ?.name ||
+                            `Roster ${item.rosterID}`
+                    ),
+
+                scoreGap:
+                    null
+            };
+        }
+
+
+        const top =
+            scored[0];
+
+
+        const second =
+            scored[1];
+
+
+        const scoreGap =
+            roundScore(
+                top.score -
+                second.score
+            );
+
+
+        const tiedAtTop =
+            scored.filter(
+                item =>
+                    Math.abs(
+                        item.score -
+                        top.score
+                    ) <
+                    0.000001
+            );
+
+
+        if (
+            tiedAtTop.length >
+            1
+        ) {
+            return {
+                label:
+                    'EVEN',
+
+                leaderRosterIDs:
+                    tiedAtTop.map(
+                        item =>
+                            item.rosterID
+                    ),
+
+                leaderTeamNames:
+                    tiedAtTop.map(
+                        item =>
+                            item.team
+                                ?.name ||
+                            `Roster ${item.rosterID}`
+                    ),
+
+                scoreGap:
+                    0
+            };
+        }
+
+
+        let label =
+            'LANDSLIDE';
+
+
+        if (
+            scoreGap <=
+            EVEN_MAX_GAP
+        ) {
+            label =
+                'EVEN';
+        }
+        else if (
+            scoreGap <=
+            SLIGHT_EDGE_MAX_GAP
+        ) {
+            label =
+                'SLIGHT EDGE';
+        }
+        else if (
+            scoreGap <=
+            CLEAR_WIN_MAX_GAP
+        ) {
+            label =
+                'CLEAR WIN';
+        }
+
+
+        return {
+            label,
+
+            leaderRosterIDs:
+                label ===
+                    'EVEN'
+                    ? []
+                    : [
+                        top.rosterID
+                    ],
+
+            leaderTeamNames:
+                label ===
+                    'EVEN'
+                    ? []
+                    : [
+                        top.team
+                            ?.name ||
+                        `Roster ${top.rosterID}`
+                    ],
+
+            scoreGap,
+
+            topScore:
+                top.score,
+
+            secondScore:
+                second.score
         };
     };
 
