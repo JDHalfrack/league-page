@@ -40,11 +40,15 @@ const buildKeeperTracker = async playerCatalog => {
     let globalWeekIndex = 0;
 
     const currentSeason = Math.max(...seasons.map(season => Number(season.year)));
+    const firstSeason = Math.min(...seasons.map(season => Number(season.year)));
 
     for (const seasonPackage of seasonPackages) {
         const year = Number(seasonPackage.year);
         const teamMap = teamManagers?.teamManagersMap?.[year] || {};
-        const eventBuckets = buildEventBuckets(seasonPackage);
+        const eventBuckets = buildEventBuckets(
+            seasonPackage,
+            year === firstSeason
+        );
 
         processEvents(
             eventBuckets.preWeek,
@@ -458,7 +462,7 @@ const loadSeasonMatchups = async (season, nflState) => {
     };
 };
 
-const buildEventBuckets = seasonPackage => {
+const buildEventBuckets = (seasonPackage, isFirstArchivedSeason = false) => {
     const preWeek = [];
     const postWeek = [];
     const byWeek = new Map();
@@ -478,6 +482,74 @@ const buildEventBuckets = seasonPackage => {
 
         if (!byWeek.has(week)) byWeek.set(week, []);
         byWeek.get(week).push(event);
+    };
+
+    /*
+        FIRST-ARCHIVE-SEASON ROSTER REASSIGNMENT REPAIR
+
+        The 2019 diagnostic proved that Sleeper's draft roster_id does not
+        always match the Week 1 roster_id for the same franchise/player.
+
+        Examples from the raw 2019 data:
+          - Cooper Kupp: drafted on roster 8, Week 1 on roster 12
+          - Nick Chubb: drafted on roster 8, Week 1 on roster 2
+          - a large group drafted on roster 4 appear on roster 8
+
+        For these cases Sleeper records NO transaction moving the player.
+        This is consistent with league/franchise roster reassignment around
+        the league's first archived season rather than a real player move.
+
+        Repair rule:
+          1. Only apply this to the FIRST archived season.
+          2. Player must have a real non-keeper draft pick.
+          3. Player must appear on a different Week 1 roster.
+          4. There must be NO recorded post-draft transaction involving that
+             player in transaction rounds 0 or 1.
+
+        If all four are true, preserve "Drafted" as the acquisition method
+        but attach that draft acquisition to the Week 1 roster. This avoids
+        false "Acquisition unknown" starts without inventing an unrecorded
+        trade or signing.
+    */
+    const openingRosterByPlayer = new Map();
+
+    if (isFirstArchivedSeason) {
+        const week1Rosters = seasonPackage.rostersByWeek.get(1) || new Map();
+
+        for (const [rosterID, playerSet] of week1Rosters.entries()) {
+            for (const playerID of playerSet) {
+                openingRosterByPlayer.set(String(playerID), Number(rosterID));
+            }
+        }
+    }
+
+    const hasRecordedPostDraftPreWeekMove = (playerID, draftStartTime) => {
+        const normalizedDraftStart = Number(draftStartTime);
+
+        return seasonPackage.transactions.some(transaction => {
+            const sourceRound = Number(transaction._sourceRound);
+            if (!Number.isFinite(sourceRound) || sourceRound > 1) return false;
+
+            const timestamp = normalizeTimestamp(
+                transaction.status_updated || transaction.created
+            );
+
+            if (
+                Number.isFinite(normalizedDraftStart) &&
+                Number.isFinite(Number(timestamp)) &&
+                Number(timestamp) < normalizedDraftStart
+            ) {
+                return false;
+            }
+
+            const adds = transaction.adds || {};
+            const drops = transaction.drops || {};
+
+            return (
+                Object.prototype.hasOwnProperty.call(adds, String(playerID)) ||
+                Object.prototype.hasOwnProperty.call(drops, String(playerID))
+            );
+        });
     };
 
     for (const draft of seasonPackage.drafts) {
@@ -508,15 +580,29 @@ const buildEventBuckets = seasonPackage => {
                 continue;
             }
 
+            const openingRosterID = openingRosterByPlayer.get(playerID);
+
+            const repairedRosterID =
+                isFirstArchivedSeason &&
+                Number.isFinite(openingRosterID) &&
+                openingRosterID !== rosterID &&
+                !hasRecordedPostDraftPreWeekMove(playerID, draft.startTime)
+                    ? openingRosterID
+                    : rosterID;
+
             pushEvent({
                 kind: 'acquire',
                 method: 'Drafted',
                 playerID,
-                rosterID,
+                rosterID: repairedRosterID,
                 season: Number(seasonPackage.year),
                 week: 0,
                 timestamp: draft.startTime,
-                source: 'draft',
+                source:
+                    repairedRosterID !== rosterID
+                        ? 'draft-opening-roster-repair'
+                        : 'draft',
+                draftRosterID: rosterID,
                 draftRound: Number.isFinite(draftRound) ? draftRound : null
             });
         }
