@@ -140,6 +140,20 @@
         1;
 
 
+    const lineageLabel =
+        lineageLevel === 1
+            ? 'Direct'
+            : lineageLevel === 2
+                ? '2nd level'
+                : lineageLevel === 3
+                    ? '3rd level'
+                    : lineageLevel === 4
+                        ? '4th level'
+                        : lineageLevel === 5
+                            ? '5th level'
+                            : `${lineageLevel}th level`;
+
+
     const levelClass =
         depth === 0
             ? 'level1'
@@ -219,7 +233,7 @@
         <div class="assetType">
             {node.assetType}
             ·
-            Lineage level {lineageLevel}
+            {lineageLabel}
         </div>
 
         <div class="title">
