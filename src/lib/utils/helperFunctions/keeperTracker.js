@@ -4,7 +4,6 @@ import { getLeagueTeamManagers } from './leagueTeamManagers';
 
 const MIN_TRANSACTION_ROUND = 0;
 const MAX_TRANSACTION_ROUND = 18;
-const LAST_TRUE_DRAFT_ROUND = 7;
 
 let cachedTracker = null;
 let pendingTracker = null;
@@ -486,23 +485,26 @@ const buildEventBuckets = seasonPackage => {
             const playerID = pick.player_id ? String(pick.player_id) : null;
             const rosterID = Number(pick.roster_id);
             const draftRound = Number(pick.round);
+            const isKeeper = pick.is_keeper === true;
 
             if (
                 !playerID ||
-                !Number.isFinite(rosterID) ||
-                !Number.isFinite(draftRound)
+                !Number.isFinite(rosterID)
             ) {
                 continue;
             }
 
             /*
-                USCCFFL only has seven actual draft rounds.
-                Sleeper records retained keepers as later-round
-                draft rows. Those rows confirm continuity, but
-                they are NOT a fresh acquisition and therefore
-                must not reset the player's ownership streak.
+                Sleeper explicitly marks retained players with
+                is_keeper === true. Keeper rows confirm that the
+                player remained with the franchise, but they are
+                NOT a fresh acquisition and therefore must not
+                reset an existing continuous ownership streak.
+
+                Any non-keeper draft pick is a true draft
+                acquisition regardless of its numerical round.
             */
-            if (draftRound > LAST_TRUE_DRAFT_ROUND) {
+            if (isKeeper) {
                 continue;
             }
 
@@ -515,7 +517,7 @@ const buildEventBuckets = seasonPackage => {
                 week: 0,
                 timestamp: draft.startTime,
                 source: 'draft',
-                draftRound
+                draftRound: Number.isFinite(draftRound) ? draftRound : null
             });
         }
     }
