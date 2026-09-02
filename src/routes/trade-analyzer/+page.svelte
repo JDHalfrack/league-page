@@ -613,108 +613,90 @@
                 No eligible scored trades are available.
             </div>
         {:else}
-            <div class="topTradeTableWrap">
-                <table class="topTradeTable">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Date</th>
-                            <th>Trade</th>
-                            <th>Result</th>
-                            <th>Score Gap</th>
-                            <th>Team Returns</th>
-                        </tr>
-                    </thead>
+            <div class="topTradeList">
+                {#each topLopsidedTrades as trade, index}
+                    <article class="topTradeRow">
+                        <div class="topTradeRank">
+                            #{index + 1}
+                        </div>
 
-                    <tbody>
-                        {#each topLopsidedTrades as trade, index}
-                            <tr>
-                                <td class="rankCell">
-                                    {index + 1}
-                                </td>
+                        <div class="topTradeSummary">
+                            <div class="topTradeDate">
+                                {formatDate(trade.date)}
+                            </div>
 
-                                <td class="dateCell">
+                            <strong class="topTradePartners">
+                                {tradeTeamsText(trade)}
+                            </strong>
+
+                            <div class="topTradeResult">
+                                <span class="comparisonBadge">
+                                    {comparisonText(trade)}
+                                </span>
+
+                                <span class="topTradeGap">
+                                    Score gap
                                     <strong>
-                                        {formatDate(trade.date)}
+                                        {trade.comparison?.scoreGap ?? 0}
+                                    </strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="topTradeReturns">
+                            {#each trade.participants as participant}
+                                {@const summary = participantSummary(participant)}
+
+                                <div class="tableReturn">
+                                    <strong class="tableTeam">
+                                        {summary.team}
                                     </strong>
 
                                     <span>
-                                        {trade.season}
+                                        WWKN
+                                        <strong>
+                                            {summary.score ?? '—'}
+                                        </strong>
+                                        /100
                                     </span>
-                                </td>
 
-                                <td class="teamsCell">
-                                    {tradeTeamsText(trade)}
-                                </td>
-
-                                <td>
-                                    <span class="comparisonBadge">
-                                        {comparisonText(trade)}
+                                    <span>
+                                        Return rank
+                                        <strong>
+                                            {summary.rank ?? '—'}
+                                        </strong>
+                                        /{summary.rankPool ?? '—'}
                                     </span>
-                                </td>
 
-                                <td class="gapCell">
-                                    {trade.comparison?.scoreGap ?? 0}
-                                </td>
+                                    <span>
+                                        Production
+                                        <strong>
+                                            {Number(summary.points).toLocaleString(
+                                                'en-US',
+                                                {
+                                                    maximumFractionDigits: 2
+                                                }
+                                            )}
+                                        </strong>
+                                        pts
+                                    </span>
 
-                                <td>
-                                    <div class="tableReturns">
-                                        {#each trade.participants as participant}
-                                            {@const summary = participantSummary(participant)}
-
-                                            <div class="tableReturn">
-                                                <strong class="tableTeam">
-                                                    {summary.team}
-                                                </strong>
-
-                                                <span>
-                                                    WWKN
-                                                    <strong>
-                                                        {summary.score ?? '—'}
-                                                    </strong>
-                                                    /100
-                                                </span>
-
-                                                <span>
-                                                    Return rank
-                                                    <strong>
-                                                        {summary.rank ?? '—'}
-                                                    </strong>
-                                                    /{summary.rankPool ?? '—'}
-                                                </span>
-
-                                                <span>
-                                                    Production
-                                                    <strong>
-                                                        {Number(summary.points).toLocaleString(
-                                                            'en-US',
-                                                            {
-                                                                maximumFractionDigits: 2
-                                                            }
-                                                        )}
-                                                    </strong>
-                                                    pts
-                                                </span>
-
-                                                <span>
-                                                    Positional Value
-                                                    <strong>
-                                                        {Number(summary.positionalValue).toLocaleString(
-                                                            'en-US',
-                                                            {
-                                                                maximumFractionDigits: 3
-                                                            }
-                                                        )}
-                                                    </strong>
-                                                </span>
-                                            </div>
-                                        {/each}
-                                    </div>
-                                </td>
-                            </tr>
-                        {/each}
-                    </tbody>
-                </table>
+                                    <span>
+                                        Positional Value
+                                        <strong>
+                                            {Number(summary.positionalValue).toLocaleString(
+                                                'en-US',
+                                                {
+                                                    maximumFractionDigits: 3
+                                                }
+                                            )}
+                                        </strong>
+                                    </span>
+                                </div>
+                            {/each}
+                        </div>
+                    </article>
+                {/each}
             </div>
         {/if}
     </section>
@@ -1234,75 +1216,90 @@
     }
 
 
-    .topTradeTableWrap {
-        width: 100%;
-        overflow-x: auto;
+    .topTradeList {
+        display: flex;
+        flex-direction: column;
     }
 
 
-    .topTradeTable {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 1050px;
-    }
-
-
-    .topTradeTable th,
-    .topTradeTable td {
-        padding: 10px 11px;
-        text-align: left;
-        vertical-align: top;
+    .topTradeRow {
+        display: grid;
+        grid-template-columns:
+            54px
+            minmax(
+                250px,
+                0.95fr
+            )
+            minmax(
+                390px,
+                1.55fr
+            );
+        gap: 14px;
+        align-items: center;
+        padding: 13px 4px;
         border-bottom: 1px solid rgba(127, 127, 127, 0.2);
     }
 
 
-    .topTradeTable th {
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.055em;
-        opacity: 0.65;
+    .topTradeRow:last-child {
+        border-bottom: none;
     }
 
 
-    .rankCell,
-    .gapCell {
-        font-size: 1.05rem;
+    .topTradeRank {
+        font-size: 1.35rem;
         font-weight: 800;
-        white-space: nowrap;
+        text-align: center;
+        opacity: 0.78;
     }
 
 
-    .dateCell {
-        white-space: nowrap;
+    .topTradeSummary {
+        min-width: 0;
     }
 
 
-    .dateCell span {
-        display: block;
-        margin-top: 2px;
-        font-size: 0.76rem;
-        opacity: 0.62;
-    }
-
-
-    .teamsCell {
-        min-width: 190px;
+    .topTradeDate {
+        font-size: 0.78rem;
         font-weight: 700;
+        opacity: 0.62;
+        margin-bottom: 2px;
     }
 
 
-    .tableReturns {
+    .topTradePartners {
+        display: block;
+        font-size: 1rem;
+        line-height: 1.25;
+    }
+
+
+    .topTradeResult {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 7px;
+        margin-top: 7px;
+    }
+
+
+    .topTradeGap {
+        font-size: 0.76rem;
+        opacity: 0.72;
+    }
+
+
+    .topTradeReturns {
         display: grid;
         grid-template-columns:
             repeat(
                 auto-fit,
                 minmax(
-                    185px,
+                    180px,
                     1fr
                 )
             );
         gap: 7px;
-        min-width: 390px;
     }
 
 
@@ -1475,6 +1472,19 @@
 
 
     @media (max-width: 1050px) {
+        .topTradeRow {
+            grid-template-columns:
+                48px
+                1fr;
+            align-items: start;
+        }
+
+
+        .topTradeReturns {
+            grid-column: 2;
+        }
+
+
         .tradePreviewMain {
             grid-template-columns:
                 1fr;
@@ -1483,6 +1493,28 @@
 
 
     @media (max-width: 720px) {
+        .topTradeRow {
+            grid-template-columns:
+                38px
+                1fr;
+            gap: 9px;
+            padding: 12px 0;
+        }
+
+
+        .topTradeRank {
+            font-size: 1.05rem;
+        }
+
+
+        .topTradeReturns {
+            grid-column: 1 / -1;
+            grid-template-columns:
+                1fr;
+            margin-left: 47px;
+        }
+
+
         .tradeTitle {
             align-items: flex-start;
             flex-direction: column;
