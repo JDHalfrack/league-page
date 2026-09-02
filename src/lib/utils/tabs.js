@@ -77,6 +77,11 @@ export const tabs = [
                 dest: '/trade-analyzer',
             },
             {
+                icon: 'hourglass_top',
+                label: 'Keeper Tracker',
+                dest: '/keeper-tracker',
+            },
+            {
                 icon: 'history_edu',
                 label: 'Constitution',
                 dest: '/constitution',
