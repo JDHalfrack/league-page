@@ -31,6 +31,19 @@
         visibleLimit = 100;
     };
 
+    const imageUrlForStreak = streak => {
+        if (
+            streak.position === 'DEF' &&
+            streak.nflTeam
+        ) {
+            return `https://a.espncdn.com/i/teamlogos/nfl/500/${String(
+                streak.nflTeam
+            ).toLowerCase()}.png`;
+        }
+
+        return streak.photoUrl;
+    };
+
     /*
         Only streaks longer than one recorded league week are included.
         Re-rank after removing one-week stints so the displayed ranking
@@ -223,11 +236,11 @@
                 <article class="streakCard" class:activeStreak={streak.active}>
                     <div class="rank">#{streak.displayRank}</div>
 
-                    <div class="playerPhoto">
+                    <div class="playerPhoto" class:defenseLogo={streak.position === 'DEF'}>
                         <div class="photoFallback">{streak.position || 'NFL'}</div>
 
                         <img
-                            src={streak.photoUrl}
+                            src={imageUrlForStreak(streak)}
                             alt={streak.playerName}
                             loading="lazy"
                             onerror={(event) => {
@@ -458,9 +471,11 @@
 
     .rank {
         text-align: center;
-        font-size: 1.1rem;
+        font-size: 0.9rem;
         font-weight: 800;
+        line-height: 1;
         opacity: 0.58;
+        white-space: nowrap;
     }
 
     .playerPhoto {
@@ -484,6 +499,12 @@
     .playerPhoto img {
         object-fit: cover;
         z-index: 2;
+    }
+
+    .playerPhoto.defenseLogo img {
+        object-fit: contain;
+        box-sizing: border-box;
+        padding: 8px;
     }
 
     .photoFallback {
@@ -674,9 +695,13 @@
         }
 
         .streakCard {
-            grid-template-columns: 36px 62px 1fr;
+            grid-template-columns: 30px 62px 1fr;
             gap: 9px;
             padding: 11px;
+        }
+
+        .rank {
+            font-size: 0.72rem;
         }
 
         .playerPhoto {
@@ -712,7 +737,11 @@
 
     @media (max-width: 520px) {
         .streakCard {
-            grid-template-columns: 32px 54px 1fr;
+            grid-template-columns: 26px 54px 1fr;
+        }
+
+        .rank {
+            font-size: 0.66rem;
         }
 
         .playerPhoto {
