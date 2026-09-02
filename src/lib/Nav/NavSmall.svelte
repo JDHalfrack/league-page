@@ -10,7 +10,7 @@
 	import { goto, preloadData } from '$app/navigation';
     import { page } from '$app/state';
 	import { leagueName } from '$lib/utils/helper';
-	import { enableBlog, managers } from '$lib/utils/leagueInfo';
+	import { enableBlog } from '$lib/utils/leagueInfo';
 
 	let active = $state(page.url.pathname);
 
@@ -63,7 +63,7 @@
 
 <Icon class="material-icons menuIcon" onclick={() => open = true} ripple={false} touch={true}>menu</Icon>
 
-<div class="nav-back" style="pointer-events: {open ? "visible" : "none"}; opacity: {open ? 1 : 0};" onclick={() => open = false}></div>
+<div class="nav-back" style="pointer-events: {open ? \"visible\" : \"none\"}; opacity: {open ? 1 : 0};" onclick={() => open = false}></div>
 
 <Drawer variant="modal" class="nav-drawer" fixed={true} bind:open>
 	<Header>
@@ -74,8 +74,8 @@
 			{#each tabs as tab}
 				{#if !tab.nest && (tab.label != 'Blog' || (tab.label == 'Blog' && enableBlog))}
 					<Item href="javascript:void(0)" onSMUIAction={() => selectTab(tab)} ontouchstart={() => preloadData(tab.dest)} onmouseover={() => preloadData(tab.dest)} activated={active == tab.dest} >
-						<Graphic class="material-icons{active == tab.dest ? "" : " nav-item"}" aria-hidden="true">{tab.icon}</Graphic>
-						<Text class="{active == tab.dest ? "" : "nav-item"}">{tab.label}</Text>
+						<Graphic class="material-icons{active == tab.dest ? \"\" : \" nav-item\"}" aria-hidden="true">{tab.icon}</Graphic>
+						<Text class="{active == tab.dest ? \"\" : \"nav-item\"}">{tab.label}</Text>
 					</Item>
 				{/if}
 			{/each}
@@ -84,19 +84,10 @@
 					<Separator />
 					<Subheader>{tab.label}</Subheader>
 					{#each tab.children as subTab}
-						{#if subTab.label == 'Managers'}
-							{#if managers.length}
-								<Item href="javascript:void(0)" onSMUIAction={() => selectTab(subTab)} activated={active == subTab.dest}  ontouchstart={() => preloadData(subTab.dest)} onmouseover={() => preloadData(subTab.dest)}>
-									<Graphic class="material-icons{active == subTab.dest ? "" : " nav-item"}" aria-hidden="true">{subTab.icon}</Graphic>
-									<Text class="{active == subTab.dest ? "" : "nav-item"}">{subTab.label}</Text>
-								</Item>
-							{/if}
-						{:else}
-							<Item href="javascript:void(0)" onSMUIAction={() => selectTab(subTab)} activated={active == subTab.dest}  ontouchstart={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}} onmouseover={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}}>
-								<Graphic class="material-icons{active == subTab.dest ? "" : " nav-item"}" aria-hidden="true">{subTab.icon}</Graphic>
-								<Text class="{active == subTab.dest ? "" : "nav-item"}">{subTab.label}</Text>
-							</Item>
-						{/if}
+						<Item href="javascript:void(0)" onSMUIAction={() => selectTab(subTab)} activated={active == subTab.dest} ontouchstart={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}} onmouseover={() => {if(subTab.label != 'Go to Sleeper') preloadData(subTab.dest)}}>
+							<Graphic class="material-icons{active == subTab.dest ? \"\" : \" nav-item\"}" aria-hidden="true">{subTab.icon}</Graphic>
+							<Text class="{active == subTab.dest ? \"\" : \"nav-item\"}">{subTab.label}</Text>
+						</Item>
 					{/each}
 				{/if}
 			{/each}
