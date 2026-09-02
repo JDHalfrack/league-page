@@ -164,6 +164,249 @@
         };
 
 
+    const maxLineageLevel =
+        roots => {
+
+            let maxLevel =
+                0;
+
+
+            const visit =
+                (
+                    node,
+                    level
+                ) => {
+
+                    if (!node) {
+                        return;
+                    }
+
+
+                    maxLevel =
+                        Math.max(
+                            maxLevel,
+                            level
+                        );
+
+
+                    for (
+                        const child
+                        of node.children ||
+                        []
+                    ) {
+                        visit(
+                            child,
+                            level + 1
+                        );
+                    }
+                };
+
+
+            for (
+                const root
+                of roots ||
+                []
+            ) {
+                visit(
+                    root,
+                    1
+                );
+            }
+
+
+            return maxLevel;
+        };
+
+
+    const lineageLegend =
+        roots => {
+
+            const maxLevel =
+                maxLineageLevel(
+                    roots
+                );
+
+
+            const items =
+                [];
+
+
+            const add =
+                (
+                    level,
+                    label,
+                    className
+                ) => {
+
+                    if (
+                        maxLevel >=
+                        level
+                    ) {
+                        items.push({
+                            level,
+                            label,
+                            className
+                        });
+                    }
+                };
+
+
+            add(
+                1,
+                'Direct',
+                'legend1'
+            );
+
+
+            add(
+                2,
+                '2nd level',
+                'legend2'
+            );
+
+
+            add(
+                3,
+                '3rd level',
+                'legend3'
+            );
+
+
+            add(
+                4,
+                '4th level',
+                'legend4'
+            );
+
+
+            add(
+                5,
+                '5th level',
+                'legend5'
+            );
+
+
+            add(
+                6,
+                '6th+ level',
+                'legendDeep'
+            );
+
+
+            return items;
+        };
+
+
+    const participantSummary =
+        participant => {
+
+            const wwkn =
+                participant
+                    ?.whatWeKnowNow;
+
+
+            const realized =
+                participant
+                    ?.realizedProduction ||
+                {};
+
+
+            return {
+                team:
+                    participant
+                        ?.team
+                        ?.name ||
+                    `Roster ${participant?.rosterID}`,
+
+                score:
+                    wwkn
+                        ?.score ??
+                    null,
+
+                rank:
+                    wwkn
+                        ?.historicalRank ??
+                    null,
+
+                rankPool:
+                    wwkn
+                        ?.poolSize ??
+                    null,
+
+                points:
+                    realized
+                        ?.points ??
+                    0,
+
+                positionalValue:
+                    realized
+                        ?.positionalValue ??
+                    0
+            };
+        };
+
+
+    const tradeTeamsText =
+        trade => {
+
+            return (
+                trade
+                    ?.participants ||
+                []
+            )
+                .map(
+                    participant =>
+                        participant
+                            ?.team
+                            ?.name ||
+                        `Roster ${participant?.rosterID}`
+                )
+                .join(
+                    ' ↔ '
+                );
+        };
+
+
+    $:
+        topLopsidedTrades =
+            (
+                diagnostics
+                    ?.eligibleTrades ||
+                []
+            )
+                .filter(
+                    trade =>
+                        Number.isFinite(
+                            Number(
+                                trade
+                                    ?.comparison
+                                    ?.scoreGap
+                            )
+                        )
+                )
+                .slice()
+                .sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        Number(
+                            b
+                                ?.comparison
+                                ?.scoreGap
+                        ) -
+                        Number(
+                            a
+                                ?.comparison
+                                ?.scoreGap
+                        )
+                )
+                .slice(
+                    0,
+                    10
+                );
+
+
     const comparisonText =
         trade => {
 
@@ -227,218 +470,145 @@
         </div>
 
         <h1>
-            Phase 5: What We Know Now
+            What We Know Now
         </h1>
 
         <p>
-            Every eligible trade side now receives a 0–100
-            What We Know Now score based on where its complete
-            realized Positional Value ranks against all other
-            eligible trade sides in league history. The lineage
-            still shows the raw points and player-level positional
-            normalization that produced the final return.
+            Each eligible trade side receives a 0–100 score
+            based on how its complete realized Positional Value
+            ranks against every other eligible trade side in
+            league history. Open any trade below to inspect the
+            full asset lineage, player production and positional
+            normalization that produced the score.
         </p>
     </section>
 
 
-    <section class="summaryGrid">
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.scoredTradeSides ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Scored Trade Sides
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.averageWhatWeKnowNow ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Average WWKN Score
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {(diagnostics?.summary?.positionalValueUnits ?? 0).toLocaleString(
-                    'en-US',
-                    {
-                        maximumFractionDigits: 2
-                    }
-                )}
-            </span>
-
-            <span class="summaryLabel">
-                Positional Value Units
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.normalizedPlayerStints ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Normalized Player Stints
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {(diagnostics?.summary?.realizedRosterPoints ?? 0).toLocaleString(
-                    'en-US',
-                    {
-                        maximumFractionDigits: 1
-                    }
-                )}
-            </span>
-
-            <span class="summaryLabel">
-                Rostered Points Traced
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.eligibleTrades ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Eligible Trades
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.lineageNodes ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Lineage Nodes
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.lineageRetrades ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Retrade Events
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.lineageDrops ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Branches Ended by Drop
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.lineageStillHeld ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Still Held
-            </span>
-        </div>
-
-        <div class="summaryCard">
-            <span class="summaryValue">
-                {diagnostics?.summary?.unresolvedDispositions ?? 0}
-            </span>
-
-            <span class="summaryLabel">
-                Need Review
-            </span>
-        </div>
-    </section>
-
-
-    <section class="panel">
+    <section class="panel topTradesPanel">
         <div class="panelHeader">
             <div>
                 <h2>
-                    Source Validation
+                    Top 10 Most Lopsided Trades
                 </h2>
 
                 <p>
-                    Historical matchup coverage remains
-                    visible because each completed week's
-                    Sleeper matchup `players` list is the
-                    active-rostered positional comparison pool.
-                    Future current-season matchup placeholders
-                    are ignored.
+                    Ranked by the gap between the highest and
+                    second-highest What We Know Now scores in
+                    each eligible trade.
                 </p>
             </div>
         </div>
 
 
-        <div class="validationTableWrap">
-            <table class="validationTable">
-                <thead>
-                    <tr>
-                        <th>Season</th>
-                        <th>Trades</th>
-                        <th>Drops</th>
-                        <th>Pick Moves</th>
-                        <th>Drafts</th>
-                        <th>Weeks</th>
-                        <th>players_points</th>
-                        <th>Missing Point Weeks</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    {#each diagnostics?.validations || [] as validation}
+        {#if !topLopsidedTrades.length}
+            <div class="empty">
+                No eligible scored trades are available.
+            </div>
+        {:else}
+            <div class="topTradeTableWrap">
+                <table class="topTradeTable">
+                    <thead>
                         <tr>
-                            <td>
-                                {validation.year}
-                            </td>
-
-                            <td>
-                                {validation.trades}
-                            </td>
-
-                            <td>
-                                {validation.officialDrops}
-                            </td>
-
-                            <td>
-                                {validation.draftPickMoves}
-                            </td>
-
-                            <td>
-                                {validation.completedDrafts}
-                            </td>
-
-                            <td>
-                                {validation.matchup.weeksWithRows ?? 0}
-                            </td>
-
-                            <td>
-                                {validation.matchup.hasPlayersPoints
-                                    ? `YES (${validation.matchup.playersPointsType})`
-                                    : 'NO'}
-                            </td>
-
-                            <td>
-                                {validation.matchup.missingPointWeeks ?? 0}
-                            </td>
+                            <th>#</th>
+                            <th>Date</th>
+                            <th>Trade</th>
+                            <th>Result</th>
+                            <th>Score Gap</th>
+                            <th>Team Returns</th>
                         </tr>
-                    {/each}
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+
+                    <tbody>
+                        {#each topLopsidedTrades as trade, index}
+                            <tr>
+                                <td class="rankCell">
+                                    {index + 1}
+                                </td>
+
+                                <td class="dateCell">
+                                    <strong>
+                                        {formatDate(trade.date)}
+                                    </strong>
+
+                                    <span>
+                                        {trade.season}
+                                    </span>
+                                </td>
+
+                                <td class="teamsCell">
+                                    {tradeTeamsText(trade)}
+                                </td>
+
+                                <td>
+                                    <span class="comparisonBadge">
+                                        {comparisonText(trade)}
+                                    </span>
+                                </td>
+
+                                <td class="gapCell">
+                                    {trade.comparison?.scoreGap ?? 0}
+                                </td>
+
+                                <td>
+                                    <div class="tableReturns">
+                                        {#each trade.participants as participant}
+                                            {@const summary = participantSummary(participant)}
+
+                                            <div class="tableReturn">
+                                                <strong class="tableTeam">
+                                                    {summary.team}
+                                                </strong>
+
+                                                <span>
+                                                    WWKN
+                                                    <strong>
+                                                        {summary.score ?? '—'}
+                                                    </strong>
+                                                    /100
+                                                </span>
+
+                                                <span>
+                                                    Return rank
+                                                    <strong>
+                                                        {summary.rank ?? '—'}
+                                                    </strong>
+                                                    /{summary.rankPool ?? '—'}
+                                                </span>
+
+                                                <span>
+                                                    Production
+                                                    <strong>
+                                                        {Number(summary.points).toLocaleString(
+                                                            'en-US',
+                                                            {
+                                                                maximumFractionDigits: 2
+                                                            }
+                                                        )}
+                                                    </strong>
+                                                    pts
+                                                </span>
+
+                                                <span>
+                                                    Positional Value
+                                                    <strong>
+                                                        {Number(summary.positionalValue).toLocaleString(
+                                                            'en-US',
+                                                            {
+                                                                maximumFractionDigits: 3
+                                                            }
+                                                        )}
+                                                    </strong>
+                                                </span>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
+        {/if}
     </section>
 
 
@@ -450,9 +620,9 @@
                 </h2>
 
                 <p>
-                    Expand a trade. Each participant gets a
-                    separate franchise-specific tree showing
-                    what happened to the assets they received.
+                    Each bar previews the participants and
+                    their final return metrics. Open it for the
+                    complete franchise-specific asset trees.
                 </p>
             </div>
 
@@ -480,22 +650,62 @@
                             type="button"
                             on:click={() => toggleTrade(trade.id)}
                         >
-                            <div>
-                                <span class="tradeNumber">
-                                    Trade {index + 1}
-                                </span>
+                            <div class="tradePreviewMain">
+                                <div class="tradePreviewIdentity">
+                                    <span class="tradeNumber">
+                                        Trade {index + 1}
+                                    </span>
 
-                                <strong>
-                                    {formatDate(trade.date)}
-                                </strong>
+                                    <strong class="tradePreviewTeams">
+                                        {tradeTeamsText(trade)}
+                                    </strong>
 
-                                <span class="tradeMeta">
-                                    {trade.season}
-                                    ·
-                                    Sleeper round {trade.sourceRound}
-                                    ·
-                                    {trade.ageYears} years old
-                                </span>
+                                    <span class="tradeMeta">
+                                        {formatDate(trade.date)}
+                                        ·
+                                        {trade.season}
+                                        ·
+                                        Sleeper round {trade.sourceRound}
+                                    </span>
+                                </div>
+
+                                <div class="tradePreviewReturns">
+                                    {#each trade.participants as participant}
+                                        {@const summary = participantSummary(participant)}
+
+                                        <div class="previewReturn">
+                                            <strong>
+                                                {summary.team}
+                                            </strong>
+
+                                            <span>
+                                                WWKN {summary.score ?? '—'}/100
+                                            </span>
+
+                                            <span>
+                                                Rank {summary.rank ?? '—'}/{summary.rankPool ?? '—'}
+                                            </span>
+
+                                            <span>
+                                                {Number(summary.points).toLocaleString(
+                                                    'en-US',
+                                                    {
+                                                        maximumFractionDigits: 1
+                                                    }
+                                                )} pts
+                                            </span>
+
+                                            <span>
+                                                PV {Number(summary.positionalValue).toLocaleString(
+                                                    'en-US',
+                                                    {
+                                                        maximumFractionDigits: 2
+                                                    }
+                                                )}
+                                            </span>
+                                        </div>
+                                    {/each}
+                                </div>
                             </div>
 
                             <div class="tradeBadges">
@@ -612,26 +822,15 @@
                                                 Received & What Happened
                                             </h4>
 
-                                            <div class="lineageLegend">
-                                                <span class="legendItem legend1">
-                                                    1 Direct
-                                                </span>
-                                                <span class="legendItem legend2">
-                                                    2 Second
-                                                </span>
-                                                <span class="legendItem legend3">
-                                                    3 Third
-                                                </span>
-                                                <span class="legendItem legend4">
-                                                    4 Fourth
-                                                </span>
-                                                <span class="legendItem legend5">
-                                                    5 Fifth
-                                                </span>
-                                                <span class="legendItem legendDeep">
-                                                    6+ Deeper
-                                                </span>
-                                            </div>
+                                            {#if participant.receivedLineages.length}
+                                                <div class="lineageLegend">
+                                                    {#each lineageLegend(participant.receivedLineages) as item}
+                                                        <span class={`legendItem ${item.className}`}>
+                                                            {item.label}
+                                                        </span>
+                                                    {/each}
+                                                </div>
+                                            {/if}
 
                                             {#if !participant.receivedLineages.length}
                                                 <div class="muted">
@@ -659,7 +858,7 @@
 
     <section class="nextStep">
         <h2>
-            Phase 5 methodology
+            How the score works
         </h2>
 
         <p>
@@ -917,6 +1116,163 @@
     }
 
 
+    .topTradeTableWrap {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+
+    .topTradeTable {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 1050px;
+    }
+
+
+    .topTradeTable th,
+    .topTradeTable td {
+        padding: 10px 11px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid rgba(127, 127, 127, 0.2);
+    }
+
+
+    .topTradeTable th {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.055em;
+        opacity: 0.65;
+    }
+
+
+    .rankCell,
+    .gapCell {
+        font-size: 1.05rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+
+    .dateCell {
+        white-space: nowrap;
+    }
+
+
+    .dateCell span {
+        display: block;
+        margin-top: 2px;
+        font-size: 0.76rem;
+        opacity: 0.62;
+    }
+
+
+    .teamsCell {
+        min-width: 190px;
+        font-weight: 700;
+    }
+
+
+    .tableReturns {
+        display: grid;
+        grid-template-columns:
+            repeat(
+                auto-fit,
+                minmax(
+                    185px,
+                    1fr
+                )
+            );
+        gap: 7px;
+        min-width: 390px;
+    }
+
+
+    .tableReturn {
+        border: 1px solid rgba(127, 127, 127, 0.2);
+        border-radius: 7px;
+        padding: 7px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 0.73rem;
+    }
+
+
+    .tableTeam {
+        font-size: 0.82rem;
+        margin-bottom: 2px;
+    }
+
+
+    .tradePreviewMain {
+        min-width: 0;
+        flex: 1;
+        display: grid;
+        grid-template-columns:
+            minmax(
+                190px,
+                0.8fr
+            )
+            minmax(
+                380px,
+                2fr
+            );
+        gap: 14px;
+        align-items: center;
+    }
+
+
+    .tradePreviewIdentity {
+        min-width: 0;
+    }
+
+
+    .tradePreviewTeams {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+
+    .tradePreviewReturns {
+        display: grid;
+        grid-template-columns:
+            repeat(
+                auto-fit,
+                minmax(
+                    175px,
+                    1fr
+                )
+            );
+        gap: 6px;
+    }
+
+
+    .previewReturn {
+        border-left: 2px solid rgba(127, 127, 127, 0.28);
+        padding-left: 8px;
+        display: grid;
+        grid-template-columns:
+            repeat(
+                2,
+                auto
+            );
+        gap: 1px 9px;
+        align-items: baseline;
+        font-size: 0.72rem;
+        opacity: 0.86;
+    }
+
+
+    .previewReturn strong {
+        grid-column: 1 / -1;
+        font-size: 0.79rem;
+        opacity: 1;
+    }
+
+
     .filter {
         display: flex;
         align-items: center;
@@ -997,6 +1353,34 @@
     .notEligible {
         border: 1px solid rgba(127, 127, 127, 0.45);
         opacity: 0.55;
+    }
+
+
+    @media (max-width: 1050px) {
+        .tradePreviewMain {
+            grid-template-columns:
+                1fr;
+        }
+    }
+
+
+    @media (max-width: 720px) {
+        .tradeTitle {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+
+        .tradeBadges {
+            width: 100%;
+            justify-content: flex-start;
+        }
+
+
+        .tradePreviewReturns {
+            grid-template-columns:
+                1fr;
+        }
     }
 
 
