@@ -4,6 +4,7 @@ import { getLeagueTeamManagers } from './leagueTeamManagers';
 
 const MIN_TRANSACTION_ROUND = 0;
 const MAX_TRANSACTION_ROUND = 18;
+const LAST_TRUE_DRAFT_ROUND = 7;
 
 let cachedTracker = null;
 let pendingTracker = null;
@@ -484,8 +485,26 @@ const buildEventBuckets = seasonPackage => {
         for (const pick of draft.picks) {
             const playerID = pick.player_id ? String(pick.player_id) : null;
             const rosterID = Number(pick.roster_id);
+            const draftRound = Number(pick.round);
 
-            if (!playerID || !Number.isFinite(rosterID)) continue;
+            if (
+                !playerID ||
+                !Number.isFinite(rosterID) ||
+                !Number.isFinite(draftRound)
+            ) {
+                continue;
+            }
+
+            /*
+                USCCFFL only has seven actual draft rounds.
+                Sleeper records retained keepers as later-round
+                draft rows. Those rows confirm continuity, but
+                they are NOT a fresh acquisition and therefore
+                must not reset the player's ownership streak.
+            */
+            if (draftRound > LAST_TRUE_DRAFT_ROUND) {
+                continue;
+            }
 
             pushEvent({
                 kind: 'acquire',
@@ -495,7 +514,8 @@ const buildEventBuckets = seasonPackage => {
                 season: Number(seasonPackage.year),
                 week: 0,
                 timestamp: draft.startTime,
-                source: 'draft'
+                source: 'draft',
+                draftRound
             });
         }
     }
