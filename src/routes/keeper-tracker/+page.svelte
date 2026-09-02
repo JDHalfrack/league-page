@@ -6,17 +6,68 @@
 
     let statusFilter = 'all';
     let acquisitionFilter = 'all';
+    let positionFilter = 'all';
     let searchText = '';
+    let visibleLimit = 100;
 
     const normalize = value => String(value || '').toLowerCase().trim();
 
-    $: filteredStreaks = streaks.filter(streak => {
+    const positionOrder = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+
+    const comparePositions = (a, b) => {
+        const aIndex = positionOrder.indexOf(a);
+        const bIndex = positionOrder.indexOf(b);
+
+        if (aIndex !== -1 || bIndex !== -1) {
+            if (aIndex === -1) return 1;
+            if (bIndex === -1) return -1;
+            return aIndex - bIndex;
+        }
+
+        return String(a).localeCompare(String(b));
+    };
+
+    const resetVisibleLimit = () => {
+        visibleLimit = 100;
+    };
+
+    /*
+        Only streaks longer than one recorded league week are included.
+        Re-rank after removing one-week stints so the displayed ranking
+        remains consecutive.
+    */
+    $: eligibleStreaks = streaks
+        .filter(streak => Number(streak.weeks) > 1)
+        .map((streak, index) => ({
+            ...streak,
+            displayRank: index + 1
+        }));
+
+    $: positionOptions = [
+        ...new Set(
+            eligibleStreaks
+                .map(streak => String(streak.position || '').trim())
+                .filter(Boolean)
+        )
+    ].sort(comparePositions);
+
+    $: longestEligibleWeeks = eligibleStreaks[0]?.weeks || 0;
+    $: activeEligibleCount = eligibleStreaks.filter(streak => streak.active).length;
+
+    $: filteredStreaks = eligibleStreaks.filter(streak => {
         if (statusFilter === 'active' && !streak.active) return false;
         if (statusFilter === 'completed' && streak.active) return false;
 
         if (
             acquisitionFilter !== 'all' &&
             streak.acquisitionMethod !== acquisitionFilter
+        ) {
+            return false;
+        }
+
+        if (
+            positionFilter !== 'all' &&
+            streak.position !== positionFilter
         ) {
             return false;
         }
@@ -30,6 +81,8 @@
             normalize(streak.position).includes(query)
         );
     });
+
+    $: displayedStreaks = filteredStreaks.slice(0, visibleLimit);
 
     const formatDate = value => {
         if (!value) return '';
@@ -97,24 +150,25 @@
             Each entry also shows how that specific streak began:
             <strong>Drafted</strong>, <strong>Signed</strong>, or
             <strong>Acquired via Trade</strong>. Active streaks are lightly shaded so
-            records that are still growing are easy to spot.
+            records that are still growing are easy to spot. One-week stints are
+            excluded from the rankings.
         </p>
     </section>
 
     <section class="summaryBar">
         <div>
             <span>Longest recorded streak</span>
-            <strong>{tracker?.summary?.longestWeeks ?? 0} weeks</strong>
+            <strong>{longestEligibleWeeks} weeks</strong>
         </div>
 
         <div>
             <span>Active streaks</span>
-            <strong>{tracker?.summary?.activeStreaks ?? 0}</strong>
+            <strong>{activeEligibleCount}</strong>
         </div>
 
         <div>
             <span>Recorded streaks</span>
-            <strong>{tracker?.summary?.totalStreaks ?? 0}</strong>
+            <strong>{eligibleStreaks.length}</strong>
         </div>
     </section>
 
@@ -123,16 +177,36 @@
             class="search"
             type="search"
             bind:value={searchText}
+            oninput={resetVisibleLimit}
             placeholder="Search player or franchise"
         />
 
-        <select bind:value={statusFilter} aria-label="Streak status">
+        <select
+            bind:value={statusFilter}
+            onchange={resetVisibleLimit}
+            aria-label="Streak status"
+        >
             <option value="all">All streaks</option>
             <option value="active">Active only</option>
             <option value="completed">Completed only</option>
         </select>
 
-        <select bind:value={acquisitionFilter} aria-label="Acquisition method">
+        <select
+            bind:value={positionFilter}
+            onchange={resetVisibleLimit}
+            aria-label="Player position"
+        >
+            <option value="all">All positions</option>
+            {#each positionOptions as position}
+                <option value={position}>{position}</option>
+            {/each}
+        </select>
+
+        <select
+            bind:value={acquisitionFilter}
+            onchange={resetVisibleLimit}
+            aria-label="Acquisition method"
+        >
             <option value="all">All acquisition methods</option>
             <option value="Drafted">Drafted</option>
             <option value="Signed">Signed</option>
@@ -145,9 +219,9 @@
         {#if !filteredStreaks.length}
             <div class="empty">No roster streaks matched those filters.</div>
         {:else}
-            {#each filteredStreaks as streak}
+            {#each displayedStreaks as streak}
                 <article class="streakCard" class:activeStreak={streak.active}>
-                    <div class="rank">#{streak.rank}</div>
+                    <div class="rank">#{streak.displayRank}</div>
 
                     <div class="playerPhoto">
                         <div class="photoFallback">{streak.position || 'NFL'}</div>
@@ -219,6 +293,35 @@
         {/if}
     </section>
 
+    {#if filteredStreaks.length > 100}
+        <div class="listControls">
+            <span>
+                Showing {Math.min(visibleLimit, filteredStreaks.length)}
+                of {filteredStreaks.length} matching streaks
+            </span>
+
+            {#if visibleLimit < filteredStreaks.length}
+                <button
+                    type="button"
+                    onclick={() => {
+                        visibleLimit = filteredStreaks.length;
+                    }}
+                >
+                    Show all {filteredStreaks.length}
+                </button>
+            {:else}
+                <button
+                    type="button"
+                    onclick={() => {
+                        visibleLimit = 100;
+                    }}
+                >
+                    Show top 100
+                </button>
+            {/if}
+        </div>
+    {/if}
+
     <section class="methodology">
         <h2>How streaks are counted</h2>
 
@@ -235,7 +338,8 @@
         <p>
             Current-season weeks are counted only after they are completed. Players who
             remain rostered during the offseason stay active, but the offseason itself
-            adds zero weeks to the total.
+            adds zero weeks to the total. Streaks of only one recorded league week are
+            omitted from this page.
         </p>
     </section>
 </div>
@@ -311,7 +415,7 @@
 
     .controls {
         display: grid;
-        grid-template-columns: minmax(240px, 1fr) 180px 220px;
+        grid-template-columns: minmax(230px, 1fr) 155px 145px 205px;
         gap: 9px;
         margin-bottom: 18px;
     }
@@ -487,6 +591,36 @@
         opacity: 0.64;
     }
 
+    .listControls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 22px;
+        font-size: 0.8rem;
+    }
+
+    .listControls span {
+        opacity: 0.62;
+    }
+
+    .listControls button {
+        min-height: 38px;
+        padding: 8px 14px;
+        border: 1px solid rgba(127, 127, 127, 0.35);
+        border-radius: 8px;
+        background: var(--fff);
+        color: inherit;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .listControls button:hover {
+        background: rgba(127, 127, 127, 0.08);
+    }
+
     .methodology {
         margin-top: 46px;
         padding-top: 28px;
@@ -507,6 +641,12 @@
         border: 1px dashed rgba(127, 127, 127, 0.3);
         border-radius: 10px;
         opacity: 0.64;
+    }
+
+    @media (max-width: 1060px) {
+        .controls {
+            grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, 1fr));
+        }
     }
 
     @media (max-width: 980px) {
@@ -591,6 +731,10 @@
         .details {
             grid-column: 1 / -1;
             grid-row: auto;
+        }
+
+        .listControls {
+            flex-direction: column;
         }
     }
 </style>
