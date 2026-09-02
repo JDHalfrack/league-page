@@ -522,11 +522,44 @@ const buildEventBuckets = seasonPackage => {
         }
     }
 
+    const draftStartTimes = seasonPackage.drafts
+        .map(draft => Number(draft.startTime))
+        .filter(Number.isFinite);
+
+    const firstDraftStartTime = draftStartTimes.length
+        ? Math.min(...draftStartTimes)
+        : null;
+
     for (const transaction of seasonPackage.transactions) {
-        const week = Number(transaction._sourceRound) || 0;
         const timestamp = normalizeTimestamp(
             transaction.status_updated || transaction.created
         );
+
+        /*
+            Sleeper transaction "round" is not always chronological
+            relative to the fantasy draft. A preseason/offseason move
+            can appear under transaction round 1 even when it happened
+            weeks before the draft.
+
+            If the transaction timestamp predates that season's draft,
+            force it into the pre-week bucket so events are applied in
+            real chronological order.
+
+            Tony Pollard 2021 is the proof case:
+              - dropped July 31, transaction round 1
+              - drafted Sept. 6, pick 1.12, is_keeper = null
+
+            Treating the July drop as Week 1 caused it to be processed
+            AFTER the Sept. 6 draft and erased the real acquisition.
+        */
+        const transactionRound = Number(transaction._sourceRound) || 0;
+        const week =
+            Number.isFinite(firstDraftStartTime) &&
+            Number.isFinite(Number(timestamp)) &&
+            Number(timestamp) < firstDraftStartTime
+                ? 0
+                : transactionRound;
+
         const type = String(transaction.type || '').toLowerCase();
         const drops = transaction.drops || {};
         const adds = transaction.adds || {};
