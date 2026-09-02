@@ -44,6 +44,109 @@
                 );
 
 
+    const eligibilityCutoff =
+        new Date();
+
+
+    eligibilityCutoff.setFullYear(
+        eligibilityCutoff.getFullYear() -
+        2
+    );
+
+
+    const eligibilityCutoffLabel =
+        new Intl
+            .DateTimeFormat(
+                'en-US',
+                {
+                    year:
+                        'numeric',
+
+                    month:
+                        'long',
+
+                    day:
+                        'numeric'
+                }
+            )
+            .format(
+                eligibilityCutoff
+            );
+
+
+    $:
+        chronologicalTradeNumbers =
+            new Map(
+                (
+                    diagnostics
+                        ?.trades ||
+                    []
+                )
+                    .slice()
+                    .sort(
+                        (
+                            a,
+                            b
+                        ) => {
+
+                            const dateDifference =
+                                (
+                                    new Date(
+                                        a.date
+                                    )
+                                        .getTime() -
+                                    new Date(
+                                        b.date
+                                    )
+                                        .getTime()
+                                );
+
+
+                            if (
+                                dateDifference !==
+                                0
+                            ) {
+                                return dateDifference;
+                            }
+
+
+                            return String(
+                                a.id ||
+                                ''
+                            )
+                                .localeCompare(
+                                    String(
+                                        b.id ||
+                                        ''
+                                    )
+                                );
+                        }
+                    )
+                    .map(
+                        (
+                            trade,
+                            index
+                        ) => [
+                            trade.id,
+                            index + 1
+                        ]
+                    )
+            );
+
+
+    const chronologicalTradeNumber =
+        trade => {
+
+            return (
+                chronologicalTradeNumbers
+                    .get(
+                        trade.id
+                    ) ||
+                '—'
+            );
+        };
+
+
     const playerName =
         playerID => {
 
@@ -477,9 +580,14 @@
             Each eligible trade side receives a 0–100 score
             based on how its complete realized Positional Value
             ranks against every other eligible trade side in
-            league history. Open any trade below to inspect the
-            full asset lineage, player production and positional
-            normalization that produced the score.
+            league history. Only trades processed on or before
+            <strong>{eligibilityCutoffLabel}</strong> are
+            considered eligible. Open any trade below to inspect
+            the full asset lineage, player production and
+            positional normalization that produced the score.
+            WWKN scores change dynamically as rostered players
+            continue to accrue stats and new trades become
+            eligible.
         </p>
     </section>
 
@@ -653,7 +761,7 @@
                             <div class="tradePreviewMain">
                                 <div class="tradePreviewIdentity">
                                     <span class="tradeNumber">
-                                        Trade {index + 1}
+                                        Trade {chronologicalTradeNumber(trade)}
                                     </span>
 
                                     <strong class="tradePreviewTeams">
@@ -899,7 +1007,12 @@
 
 
     h1 {
-        margin: 4px 0 8px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 4rem;
+        line-height: 1.05;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        margin: 20px 0 35px;
     }
 
 
@@ -974,7 +1087,12 @@
 
     .panelHeader h2,
     .nextStep h2 {
-        margin: 0 0 5px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 2.6rem;
+        line-height: 1.1;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        margin: 0 0 25px;
     }
 
 
@@ -1533,6 +1651,17 @@
         max-width:
             800px
     ) {
+        h1 {
+            font-size: 3rem;
+        }
+
+
+        .panelHeader h2,
+        .nextStep h2 {
+            font-size: 2.1rem;
+        }
+
+
         .tradeHeader {
             flex-direction: column;
         }
