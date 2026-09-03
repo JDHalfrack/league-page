@@ -1,9 +1,17 @@
 export async function load({ fetch, url }) {
-    const year = url.searchParams.get('year');
+    const prospectClass = url.searchParams.get('class');
+    const legacyYear = url.searchParams.get('year');
     const week = url.searchParams.get('week');
 
     const params = new URLSearchParams();
-    if (year) params.set('year', year);
+
+    if (prospectClass) {
+        params.set('class', prospectClass);
+    } else if (legacyYear) {
+        // Keep old shared/bookmarked URLs working.
+        params.set('year', legacyYear);
+    }
+
     if (week) params.set('week', week);
 
     const response = await fetch(
