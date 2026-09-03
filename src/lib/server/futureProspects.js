@@ -302,8 +302,8 @@ const fetchRecruiting = async cutoffYear => {
             });
 
             for (const row of result) {
-            rows.push(row);
-        }
+                rows.push(row);
+            }
         } catch (err) {
             /*
                 Recruiting enrichment should never destroy the entire board.
@@ -313,6 +313,31 @@ const fetchRecruiting = async cutoffYear => {
             console.warn(`CFBD recruiting ${year} unavailable:`, err?.message || err);
         }
 
+        await sleep(REQUEST_GAP_MS);
+    }
+
+    return rows;
+};
+
+const fetchDraftPicksForYear = async year => {
+    try {
+        return await cfbdGet('/draft/picks', { year });
+    } catch (err) {
+        console.warn(`CFBD draft picks ${year} unavailable:`, err?.message || err);
+        return [];
+    }
+};
+
+const fetchDraftedPlayersThrough = async (cutoffYear, currentYear) => {
+    const rows = [];
+    const endYear = Math.min(cutoffYear, currentYear);
+    const startYear = Math.max(2010, cutoffYear - 5);
+
+    for (let year = startYear; year <= endYear; year++) {
+        const result = await fetchDraftPicksForYear(year);
+        for (const row of result) {
+            rows.push(row);
+        }
         await sleep(REQUEST_GAP_MS);
     }
 
@@ -337,6 +362,24 @@ const buildDraftMap = picks => {
     return map;
 };
 
+const buildDraftedIdSet = picks => {
+    const ids = new Set();
+
+    for (const pick of picks || []) {
+        const id =
+            pick.collegeAthleteId ??
+            pick.cfbdId ??
+            pick.collegePlayerId ??
+            null;
+
+        if (id) {
+            ids.add(String(id));
+        }
+    }
+
+    return ids;
+};
+
 export const buildProspectBoard = async ({
     cutoffYear,
     endWeek = null,
@@ -350,7 +393,6 @@ export const buildProspectBoard = async ({
         of 12+ simultaneous requests on the first page load.
     */
     const statRows = await fetchStatsThrough(cutoffYear, endWeek);
-
     const recruits = await fetchRecruiting(cutoffYear);
 
     let spRatings = [];
@@ -362,16 +404,26 @@ export const buildProspectBoard = async ({
 
     await sleep(REQUEST_GAP_MS);
 
+    /*
+        Board rule:
+        - if we are evaluating 2027 prospects (cutoffYear 2026), remove anyone
+          already drafted in 2026 or earlier.
+        - if we are evaluating 2026 prospects (cutoffYear 2025), remove anyone
+          already drafted in 2025 or earlier.
+
+        We still separately fetch the NEXT draft class (cutoffYear + 1) so that
+        historical backtests can show who a prospect eventually became.
+    */
+    const draftedPlayersThroughCutoff = await fetchDraftedPlayersThrough(
+        cutoffYear,
+        currentYear
+    );
+
+    const draftedIdSet = buildDraftedIdSet(draftedPlayersThroughCutoff);
+
     let draftPicks = [];
     if (draftYear <= currentYear) {
-        try {
-            draftPicks = await cfbdGet('/draft/picks', { year: draftYear });
-        } catch (err) {
-            console.warn(
-                `CFBD draft picks ${draftYear} unavailable:`,
-                err?.message || err
-            );
-        }
+        draftPicks = await fetchDraftPicksForYear(draftYear);
     }
 
     const players = new Map();
@@ -446,18 +498,17 @@ export const buildProspectBoard = async ({
         A board for a given cutoff season should represent players who were
         actually still playing college football in that season.
 
-        Without this filter, the multi-year stat window also pulls in players
-        whose last college season was earlier — including players already
-        drafted into the NFL. Their old production is useful as history, but
-        they must not remain on a later prospect board.
+        We still use prior seasons to CALCULATE a player's grade; these filters
+        only determine who belongs on the selected season's board.
 
-        We still use prior seasons to CALCULATE a player's grade; this filter
-        only determines who belongs on the selected season's board.
+        In addition to the current-season participation check, exclude anyone
+        already taken in the NFL Draft on or before the selected cutoff season.
     */
     rows = rows.filter(
         player =>
             player.productionRaw > 1 &&
-            player.seasons.has(cutoffYear)
+            player.seasons.has(cutoffYear) &&
+            !draftedIdSet.has(player.id)
     );
 
     const scored = [];
@@ -576,7 +627,7 @@ export const buildProspectBoard = async ({
         currentYear,
         draftYear,
         generatedAt: new Date().toISOString(),
-        modelVersion: '0.1.3',
+        modelVersion: '0.1.4',
         prospects: scored.map((player, index) => ({
             ...player,
             rank: index + 1
