@@ -23,7 +23,6 @@ export async function GET({ url, setHeaders }) {
         legacyRequestedYear >= 2010 &&
         legacyRequestedYear <= currentYear
     ) {
-        // Backward compatibility for old ?year=2026 links.
         prospectClass = legacyRequestedYear + 1;
     }
 
@@ -46,8 +45,8 @@ export async function GET({ url, setHeaders }) {
         setHeaders({
             'cache-control':
                 prospectClass === defaultProspectClass
-                    ? 'public, s-maxage=21600, stale-while-revalidate=43200'
-                    : 'public, s-maxage=86400, stale-while-revalidate=604800'
+                    ? 'public, s-maxage=21600, stale-while-revalidate=86400'
+                    : 'public, s-maxage=604800, stale-while-revalidate=2592000'
         });
 
         return json(board);
