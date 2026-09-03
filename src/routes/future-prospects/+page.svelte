@@ -1,11 +1,17 @@
 <script>
+    import { browser } from '$app/environment';
     import { goto } from '$app/navigation';
 
     export let data;
 
-    $: board = data?.board || {};
-    $: prospects = board?.prospects || [];
-    $: loadError = board?.error ? board.message : '';
+    let board = {};
+    let prospects = [];
+    let loadError = '';
+    let loading = true;
+    let elapsedSeconds = 0;
+    let loadedClass = null;
+    let activeController = null;
+    let elapsedTimer = null;
 
     let searchText = '';
     let positionFilter = 'all';
@@ -18,12 +24,23 @@
         (_, index) => defaultProspectClass - index
     );
 
+    const CACHE_PREFIX = 'usccffl-future-prospects-v2.7:';
+
     const normalize = value => String(value || '').toLowerCase().trim();
 
-    $: prospectClass = Number(board?.prospectClass || defaultProspectClass);
+    $: requestedClass = Number(data?.requestedClass || defaultProspectClass);
+    $: prospectClass = Number(board?.prospectClass || requestedClass);
     $: cutoffYear = Number(board?.cutoffYear || prospectClass - 1);
-    $: positions = [...new Set(prospects.map(player => player.position))].filter(Boolean).sort();
-    $: statuses = [...new Set(prospects.map(player => player.status))].filter(Boolean).sort();
+    $: prospects = board?.prospects || [];
+    $: loadError = board?.error ? board.message : loadError;
+
+    $: positions = [...new Set(prospects.map(player => player.position))]
+        .filter(Boolean)
+        .sort();
+
+    $: statuses = [...new Set(prospects.map(player => player.status))]
+        .filter(Boolean)
+        .sort();
 
     $: filteredProspects = prospects.filter(player => {
         if (positionFilter !== 'all' && player.position !== positionFilter) return false;
@@ -41,10 +58,133 @@
 
     $: featuredProspects = prospects.slice(0, 3);
     $: eliteCount = prospects.filter(player => player.grade >= 90).length;
-    $: eligibleCount = prospects.filter(player => String(player.status || '').includes('Eligible')).length;
+    $: eligibleCount = prospects.filter(player =>
+        String(player.status || '').includes('Eligible')
+    ).length;
+
+    const clearElapsedTimer = () => {
+        if (elapsedTimer) {
+            clearInterval(elapsedTimer);
+            elapsedTimer = null;
+        }
+    };
+
+    const startElapsedTimer = () => {
+        clearElapsedTimer();
+        elapsedSeconds = 0;
+
+        elapsedTimer = setInterval(() => {
+            elapsedSeconds += 1;
+        }, 1000);
+    };
+
+    const getSessionBoard = classYear => {
+        if (!browser) return null;
+
+        try {
+            const raw = sessionStorage.getItem(`${CACHE_PREFIX}${classYear}`);
+            if (!raw) return null;
+
+            const cached = JSON.parse(raw);
+            if (!cached?.prospects) return null;
+
+            return cached;
+        } catch {
+            return null;
+        }
+    };
+
+    const setSessionBoard = (classYear, value) => {
+        if (!browser) return;
+
+        try {
+            sessionStorage.setItem(
+                `${CACHE_PREFIX}${classYear}`,
+                JSON.stringify(value)
+            );
+        } catch {
+            // Session cache is optional. Ignore storage failures.
+        }
+    };
+
+    const loadBoard = async classYear => {
+        if (!browser) return;
+
+        activeController?.abort();
+        activeController = new AbortController();
+
+        loadError = '';
+        loading = true;
+        searchText = '';
+        positionFilter = 'all';
+        statusFilter = 'all';
+
+        const cached = getSessionBoard(classYear);
+
+        if (cached) {
+            board = cached;
+            loading = false;
+            elapsedSeconds = 0;
+            clearElapsedTimer();
+            return;
+        }
+
+        board = {};
+        startElapsedTimer();
+
+        try {
+            const response = await fetch(
+                `/api/future-prospects?class=${classYear}`,
+                {
+                    signal: activeController.signal,
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || result?.error) {
+                throw new Error(
+                    result?.message ||
+                    `Future Prospects returned HTTP ${response.status}.`
+                );
+            }
+
+            board = result;
+            setSessionBoard(classYear, result);
+        } catch (err) {
+            if (err?.name === 'AbortError') return;
+
+            board = {};
+            loadError =
+                err?.message ||
+                'Future Prospects could not load from CollegeFootballData.';
+        } finally {
+            if (activeController?.signal?.aborted) return;
+
+            loading = false;
+            clearElapsedTimer();
+        }
+    };
+
+    $: if (
+        browser &&
+        Number.isInteger(requestedClass) &&
+        requestedClass !== loadedClass
+    ) {
+        loadedClass = requestedClass;
+        loadBoard(requestedClass);
+    }
 
     const changeProspectClass = event => {
-        goto(`/future-prospects?class=${Number(event.currentTarget.value)}`);
+        const selectedClass = Number(event.currentTarget.value);
+
+        goto(`/future-prospects?class=${selectedClass}`, {
+            keepFocus: true,
+            noScroll: true
+        });
     };
 
     const gradeClass = grade => {
@@ -58,6 +198,7 @@
 
     const formatGeneratedAt = value => {
         if (!value) return '';
+
         return new Intl.DateTimeFormat('en-US', {
             month: 'short',
             day: 'numeric',
@@ -67,7 +208,10 @@
         }).format(new Date(value));
     };
 
-    const profileLine = player => [player.position, player.school, player.classYear].filter(Boolean).join(' · ');
+    const profileLine = player =>
+        [player.position, player.school, player.classYear]
+            .filter(Boolean)
+            .join(' · ');
 
     const featuredMetrics = player => {
         if (player.position === 'RB') {
@@ -144,7 +288,36 @@
         </div>
     </section>
 
-    {#if loadError}
+    {#if loading}
+        <section class="loadingBox" aria-live="polite">
+            <div class="loadingTop">
+                <div>
+                    <div class="eyebrow">CollegeFootballData</div>
+                    <h2>Building the {requestedClass} prospect board…</h2>
+                </div>
+                <strong>{elapsedSeconds}s</strong>
+            </div>
+
+            <div
+                class="loadingTrack"
+                role="progressbar"
+                aria-label="Loading prospect board"
+                aria-valuetext="Working"
+            >
+                <div class="loadingBar"></div>
+            </div>
+
+            <p>
+                Pulling historical college stats, recruiting context, draft history,
+                and calculating the prospect grades.
+            </p>
+
+            <small>
+                The first uncached load for a class can take a while. Once loaded in
+                this browser session, returning to that class should be immediate.
+            </small>
+        </section>
+    {:else if loadError}
         <section class="errorBox">
             <strong>CollegeFootballData did not load.</strong>
             <span>{loadError}</span>
@@ -169,7 +342,7 @@
                         <div class="eyebrow">Top of the board</div>
                         <h2>Featured Prospects</h2>
                     </div>
-                    <span>`${prospectClass} prospect board · stats through ${cutoffYear}`</span>
+                    <span>{prospectClass} prospect board · stats through {cutoffYear}</span>
                 </div>
 
                 <div class="featuredGrid">
@@ -312,6 +485,74 @@
     .scaleTitle { padding:14px 16px; border-bottom:1px solid rgba(127,127,127,.16); }
     .scaleRows>div { display:grid; grid-template-columns:62px 1fr; gap:10px; padding:9px 16px; border-bottom:1px solid rgba(127,127,127,.1); font-size:.84rem; }
     .scaleRows>div:last-child { border-bottom:0; }
+    .loadingBox {
+        margin: 30px 0 44px;
+        padding: 22px 24px;
+        border: 1px solid rgba(71,120,178,.28);
+        border-radius: 12px;
+        background: var(--fff);
+        box-shadow: 0 4px 18px rgba(0,0,0,.045);
+    }
+
+    .loadingTop {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+    }
+
+    .loadingTop h2 {
+        margin: 6px 0 0;
+        font-size: 1.25rem;
+        letter-spacing: -.02em;
+    }
+
+    .loadingTop > strong {
+        min-width: 42px;
+        text-align: right;
+        font-size: .88rem;
+        opacity: .55;
+    }
+
+    .loadingTrack {
+        position: relative;
+        overflow: hidden;
+        height: 9px;
+        margin: 18px 0 14px;
+        border-radius: 999px;
+        background: rgba(127,127,127,.14);
+    }
+
+    .loadingBar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 38%;
+        border-radius: inherit;
+        background: currentColor;
+        opacity: .62;
+        animation: prospectLoading 1.35s ease-in-out infinite;
+    }
+
+    .loadingBox p {
+        margin: 0;
+        font-size: .86rem;
+        line-height: 1.5;
+    }
+
+    .loadingBox small {
+        display: block;
+        margin-top: 5px;
+        line-height: 1.4;
+        opacity: .58;
+    }
+
+    @keyframes prospectLoading {
+        0% { left: -42%; }
+        55% { left: 58%; }
+        100% { left: 108%; }
+    }
+
     .errorBox { display:flex; flex-direction:column; gap:6px; padding:18px; border:1px solid rgba(175,60,60,.3); border-radius:10px; background:rgba(175,60,60,.08); }
     .errorBox span { line-height:1.5; } .errorBox small { opacity:.65; }
     .summaryBar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); overflow:hidden; margin:30px 0 44px; border:1px solid rgba(127,127,127,.2); border-radius:10px; background:rgba(127,127,127,.12); gap:1px; }
