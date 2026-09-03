@@ -23,7 +23,7 @@
         (_, index) => defaultProspectClass - index
     );
 
-    const CACHE_PREFIX = 'usccffl-future-prospects-v3.2:';
+    const CACHE_PREFIX = 'usccffl-future-prospects-v3.3:';
 
     const normalize = value => String(value || '').toLowerCase().trim();
 
@@ -127,7 +127,7 @@
 
         try {
             const response = await fetch(
-                `/api/future-prospects?class=${classYear}&model=0.3.2`,
+                `/api/future-prospects?class=${classYear}&model=0.3.3`,
                 {
                     signal: activeController.signal,
                     headers: {
