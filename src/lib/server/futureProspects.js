@@ -1,10 +1,10 @@
 import { cfbdGet } from '$lib/server/cfbd';
 
-const SKILL_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
+const SKILL_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE', 'K']);
 const MIN_GRADE = 40;
 const MAX_GRADE = 99;
-const REQUEST_GAP_MS = 75;
-const MODEL_VERSION = '0.3.0';
+const REQUEST_GAP_MS = 25;
+const MODEL_VERSION = '0.3.2';
 
 const sleep = milliseconds =>
     new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -13,6 +13,11 @@ const cleanKey = value =>
     String(value || '')
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
+
+const normalizePosition = value => {
+    const position = String(value || '').toUpperCase();
+    return position === 'PK' ? 'K' : position;
+};
 
 const toNumber = value => {
     const number = Number(String(value ?? '').replace(/,/g, ''));
@@ -65,11 +70,10 @@ const tierForGrade = grade => {
 const weightsForPosition = position => {
     if (position === 'QB') {
         return {
-            production: 0.32,
-            efficiency: 0.25,
+            production: 0.37,
+            efficiency: 0.28,
             development: 0.08,
             pedigree: 0.10,
-            competition: 0.08,
             size: 0.08,
             versatility: 0.09
         };
@@ -77,11 +81,10 @@ const weightsForPosition = position => {
 
     if (position === 'RB') {
         return {
-            production: 0.34,
-            efficiency: 0.18,
+            production: 0.39,
+            efficiency: 0.20,
             development: 0.08,
             pedigree: 0.09,
-            competition: 0.07,
             size: 0.08,
             versatility: 0.16
         };
@@ -89,25 +92,43 @@ const weightsForPosition = position => {
 
     if (position === 'TE') {
         return {
-            production: 0.31,
-            efficiency: 0.20,
+            production: 0.36,
+            efficiency: 0.23,
             development: 0.08,
             pedigree: 0.10,
-            competition: 0.08,
             size: 0.10,
             versatility: 0.13
         };
     }
 
+    if (position === 'K') {
+        return {
+            production: 0.46,
+            efficiency: 0.34,
+            development: 0.08,
+            pedigree: 0.04,
+            size: 0.00,
+            versatility: 0.08
+        };
+    }
+
     return {
-        production: 0.35,
-        efficiency: 0.20,
+        production: 0.40,
+        efficiency: 0.23,
         development: 0.08,
         pedigree: 0.10,
-        competition: 0.08,
         size: 0.08,
         versatility: 0.11
     };
+};
+
+const positionValueAdjustment = position => {
+    if (position === 'WR') return 2.0;
+    if (position === 'RB') return 1.4;
+    if (position === 'QB') return 0.2;
+    if (position === 'TE') return 0;
+    if (position === 'K') return -4.0;
+    return 0;
 };
 
 const addCategoryStat = (target, category, statType, amount) => {
@@ -134,6 +155,11 @@ const calculateRawMetrics = categoryStats => {
     const passing = categoryStats?.passing || {};
     const rushing = categoryStats?.rushing || {};
     const receiving = categoryStats?.receiving || {};
+    const kicking =
+        categoryStats?.kicking ||
+        categoryStats?.fieldgoals ||
+        categoryStats?.scoring ||
+        {};
 
     const pYds = statFrom(passing, ['YDS', 'passingYards', 'passYards']);
     const pTD = statFrom(passing, ['TD', 'passingTDs', 'passTD']);
@@ -148,6 +174,35 @@ const calculateRawMetrics = categoryStats => {
     const catches = statFrom(receiving, ['REC', 'receptions']);
     const reYds = statFrom(receiving, ['YDS', 'receivingYards', 'recYards']);
     const reTD = statFrom(receiving, ['TD', 'receivingTDs', 'recTD']);
+
+    const fgMade = statFrom(kicking, [
+        'FGM',
+        'fieldGoalsMade',
+        'madeFieldGoals',
+        'made'
+    ]);
+    const fgAttempts = statFrom(kicking, [
+        'FGA',
+        'fieldGoalAttempts',
+        'attemptedFieldGoals',
+        'attempts'
+    ]);
+    const xpMade = statFrom(kicking, [
+        'XPM',
+        'PAT',
+        'extraPointsMade',
+        'madeExtraPoints'
+    ]);
+    const xpAttempts = statFrom(kicking, [
+        'XPA',
+        'extraPointAttempts',
+        'attemptedExtraPoints'
+    ]);
+    const longFg = statFrom(kicking, [
+        'LONG',
+        'long',
+        'longestFieldGoal'
+    ]);
 
     return {
         passing: {
@@ -166,6 +221,13 @@ const calculateRawMetrics = categoryStats => {
             receptions: catches,
             yards: reYds,
             touchdowns: reTD
+        },
+        kicking: {
+            fieldGoalsMade: fgMade,
+            fieldGoalAttempts: fgAttempts,
+            extraPointsMade: xpMade,
+            extraPointAttempts: xpAttempts,
+            long: longFg
         }
     };
 };
@@ -184,6 +246,12 @@ const positionMetrics = (position, totals) => {
     const catches = totals.receiving.receptions;
     const reYds = totals.receiving.yards;
     const reTD = totals.receiving.touchdowns;
+
+    const fgMade = totals.kicking?.fieldGoalsMade || 0;
+    const fgAttempts = totals.kicking?.fieldGoalAttempts || 0;
+    const xpMade = totals.kicking?.extraPointsMade || 0;
+    const xpAttempts = totals.kicking?.extraPointAttempts || 0;
+    const longFg = totals.kicking?.long || 0;
 
     let productionRaw = 0;
     let efficiencyRaw = 0;
@@ -223,6 +291,19 @@ const positionMetrics = (position, totals) => {
             catches * 1.7 +
             reYds / 10 +
             reTD * 6;
+    } else if (position === 'K') {
+        productionRaw =
+            fgMade * 4 +
+            xpMade * 0.75 +
+            Math.max(0, longFg - 40) * 0.20;
+
+        efficiencyRaw =
+            safeRate(fgMade, fgAttempts) * 100 +
+            safeRate(xpMade, xpAttempts) * 25 +
+            Math.max(0, longFg - 45) * 0.75;
+
+        versatilityRaw =
+            Math.max(0, longFg - 35) * 1.5;
     } else {
         productionRaw =
             reYds / 10 +
@@ -378,9 +459,9 @@ const collegeStage = (recruitYear, cutoffYear, observedSeasons) => {
 const evidenceConfidence = observedSeasons => {
     const count = Math.max(1, Number(observedSeasons) || 1);
 
-    if (count <= 1) return 0.55;
-    if (count === 2) return 0.75;
-    if (count === 3) return 0.90;
+    if (count <= 1) return 0.70;
+    if (count === 2) return 0.90;
+    if (count === 3) return 0.97;
     return 1;
 };
 
@@ -422,59 +503,84 @@ const draftOutcome = pick => {
     };
 };
 
+const runWithConcurrency = async (jobs, limit = 2) => {
+    const results = new Array(jobs.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+        while (true) {
+            const index = nextIndex++;
+            if (index >= jobs.length) return;
+            results[index] = await jobs[index]();
+        }
+    };
+
+    await Promise.all(
+        Array.from(
+            { length: Math.min(limit, jobs.length) },
+            () => worker()
+        )
+    );
+
+    return results;
+};
+
 const fetchStatsThrough = async (cutoffYear, endWeek) => {
-    const rows = [];
+    const years = Array.from(
+        { length: 6 },
+        (_, index) => cutoffYear - 5 + index
+    );
 
-    for (let year = cutoffYear - 5; year <= cutoffYear; year++) {
-        const result = await cfbdGet('/stats/player/season', {
-            year,
-            seasonType: 'both',
-            endWeek: year === cutoffYear ? endWeek : undefined
-        });
+    const yearlyResults = await runWithConcurrency(
+        years.map(year => async () => {
+            const result = await cfbdGet('/stats/player/season', {
+                year,
+                seasonType: 'both',
+                endWeek: year === cutoffYear ? endWeek : undefined
+            });
 
-        for (const row of result) {
-            /*
-                Preserve the requested year even if a future CFBD response omits
-                the season field. This prevents a historical row from being
-                accidentally attributed to the selected cutoff season.
-            */
-            rows.push({
+            await sleep(REQUEST_GAP_MS);
+
+            return result.map(row => ({
                 ...row,
                 season: Number(row.season ?? year),
                 _requestedSeason: year
-            });
-        }
+            }));
+        }),
+        2
+    );
 
-        await sleep(REQUEST_GAP_MS);
-    }
-
-    return rows;
+    return yearlyResults.flat();
 };
 
 const fetchRecruiting = async cutoffYear => {
-    const rows = [];
+    const years = Array.from(
+        { length: 6 },
+        (_, index) => cutoffYear - 5 + index
+    );
 
-    for (let year = cutoffYear - 5; year <= cutoffYear; year++) {
-        try {
-            const result = await cfbdGet('/recruiting/players', {
-                year,
-                classification: 'HighSchool'
-            });
+    const yearlyResults = await runWithConcurrency(
+        years.map(year => async () => {
+            try {
+                const result = await cfbdGet('/recruiting/players', {
+                    year,
+                    classification: 'HighSchool'
+                });
 
-            for (const row of result) {
-                rows.push(row);
+                await sleep(REQUEST_GAP_MS);
+                return result;
+            } catch (err) {
+                console.warn(
+                    `CFBD recruiting ${year} unavailable:`,
+                    err?.message || err
+                );
+                return [];
             }
-        } catch (err) {
-            console.warn(
-                `CFBD recruiting ${year} unavailable:`,
-                err?.message || err
-            );
-        }
+        }),
+        2
+    );
 
-        await sleep(REQUEST_GAP_MS);
-    }
-
-    return rows;
+    return yearlyResults.flat();
 };
 
 const fetchDraftPicksForYear = async year => {
@@ -551,42 +657,32 @@ export const buildProspectBoard = async ({
     currentYear
 }) => {
     const draftYear = prospectClass;
-
     /*
-        Speed optimization:
-        player-season stats and recruiting classes are separate CFBD endpoint
-        families. We run those two sequential streams at the same time. That
-        keeps concurrency to at most two requests, instead of the old 12+ burst
-        that triggered CFBD 429 responses.
+        Cold-load optimization: stats and recruiting run in parallel, while
+        each endpoint family is capped at two concurrent year requests.
+        SP+ is removed from this version to save another cold-load request.
     */
     const [statRows, recruits] = await Promise.all([
         fetchStatsThrough(cutoffYear, endWeek),
         fetchRecruiting(cutoffYear)
     ]);
 
-    let spRatings = [];
-    try {
-        spRatings = await cfbdGet('/ratings/sp', { year: cutoffYear });
-    } catch (err) {
-        console.warn('CFBD SP+ ratings unavailable:', err?.message || err);
-    }
-
-    const draftedBeforeClass = await fetchDraftedPlayersBeforeProspectClass(
-        prospectClass,
-        currentYear
-    );
+    const [draftedBeforeClass, draftPicks] = await Promise.all([
+        fetchDraftedPlayersBeforeProspectClass(
+            prospectClass,
+            currentYear
+        ),
+        draftYear <= currentYear
+            ? fetchDraftPicksForYear(draftYear)
+            : Promise.resolve([])
+    ]);
 
     const draftedIdSet = buildDraftedIdSet(draftedBeforeClass);
-
-    let draftPicks = [];
-    if (draftYear <= currentYear) {
-        draftPicks = await fetchDraftPicksForYear(draftYear);
-    }
 
     const players = new Map();
 
     for (const row of statRows) {
-        const position = String(row.position || '').toUpperCase();
+        const position = normalizePosition(row.position);
         if (!SKILL_POSITIONS.has(position)) continue;
 
         const id = String(row.playerId || '');
@@ -642,23 +738,30 @@ export const buildProspectBoard = async ({
         }
     }
 
-    const spByTeam = new Map(
-        (spRatings || []).map(row => [
-            String(row.team || '').toLowerCase(),
-            Number(row.sos ?? row.rating ?? 0)
-        ])
-    );
-
     const draftById = buildDraftMap(draftPicks);
 
     let rows = [...players.values()].map(player => {
         const recruit = recruitById.get(player.id) || null;
         const latestSeason = latestSeasonForPlayer(player);
-
         const careerTotals = calculateRawMetrics(player.categoryStats);
         const latestTotals = calculateRawMetrics(
             player.seasonCategoryStats[latestSeason] || {}
         );
+
+        const seasonMetrics = [...player.seasons]
+            .filter(Number.isFinite)
+            .sort((a, b) => a - b)
+            .map(season => {
+                const totals = calculateRawMetrics(
+                    player.seasonCategoryStats[season] || {}
+                );
+
+                return {
+                    season,
+                    totals,
+                    metrics: positionMetrics(player.position, totals)
+                };
+            });
 
         const careerMetrics = positionMetrics(
             player.position,
@@ -670,25 +773,56 @@ export const buildProspectBoard = async ({
             latestTotals
         );
 
-        /*
-            Career résumé is the foundation; the most recent available season
-            gets extra weight so a breakout or decline actually moves a player's
-            snapshot from one prospect class to the next.
-        */
+        const bestProductionSeason = seasonMetrics.reduce(
+            (best, row) =>
+                !best ||
+                row.metrics.productionRaw >
+                    best.metrics.productionRaw
+                    ? row
+                    : best,
+            null
+        );
+
+        const bestEfficiencySeason = seasonMetrics.reduce(
+            (best, row) =>
+                !best ||
+                row.metrics.efficiencyRaw >
+                    best.metrics.efficiencyRaw
+                    ? row
+                    : best,
+            null
+        );
+
+        const observedSeasons = Math.max(1, player.seasons.size);
+
+        const careerAverageProduction =
+            careerMetrics.productionRaw / observedSeasons;
+
+        const careerAverageEfficiency =
+            seasonMetrics.reduce(
+                (sum, row) =>
+                    sum + row.metrics.efficiencyRaw,
+                0
+            ) / observedSeasons;
+
+        const careerAverageVersatility =
+            careerMetrics.versatilityRaw / observedSeasons;
+
         const productionRaw =
-            careerMetrics.productionRaw * 0.65 +
-            latestMetrics.productionRaw * 0.35;
+            latestMetrics.productionRaw * 0.40 +
+            (bestProductionSeason?.metrics.productionRaw ?? 0) * 0.35 +
+            careerAverageProduction * 0.25;
 
         const efficiencyRaw =
-            careerMetrics.efficiencyRaw * 0.70 +
-            latestMetrics.efficiencyRaw * 0.30;
+            latestMetrics.efficiencyRaw * 0.45 +
+            (bestEfficiencySeason?.metrics.efficiencyRaw ?? 0) * 0.30 +
+            careerAverageEfficiency * 0.25;
 
         const versatilityRaw =
-            careerMetrics.versatilityRaw * 0.70 +
-            latestMetrics.versatilityRaw * 0.30;
+            latestMetrics.versatilityRaw * 0.50 +
+            careerAverageVersatility * 0.50;
 
         const recruitYear = recruit?.year ?? null;
-        const observedSeasons = player.seasons.size;
         const stage = collegeStage(
             recruitYear,
             cutoffYear,
@@ -718,11 +852,7 @@ export const buildProspectBoard = async ({
                 heightInches,
                 weight
             ),
-            collegeStage: stage,
-            competitionRaw:
-                spByTeam.get(
-                    String(player.team || '').toLowerCase()
-                ) ?? 0
+            collegeStage: stage
         };
     });
 
@@ -762,11 +892,6 @@ export const buildProspectBoard = async ({
             player => player.versatilityRaw
         );
 
-        const competitionPct = percentileMap(
-            peers,
-            player => player.competitionRaw
-        );
-
         const pedigreePeers = peers.filter(
             player => player.recruitingRating !== null
         );
@@ -792,9 +917,6 @@ export const buildProspectBoard = async ({
                 player.observedSeasons
             );
 
-            const competition =
-                competitionPct.get(player.id) ?? 50;
-
             const pedigree =
                 pedigreePct.get(player.id) ?? 50;
 
@@ -803,14 +925,20 @@ export const buildProspectBoard = async ({
 
             const weights = weightsForPosition(position);
 
-            const composite =
+            const footballComposite =
                 production * weights.production +
                 efficiency * weights.efficiency +
                 development * weights.development +
                 pedigree * weights.pedigree +
-                competition * weights.competition +
                 size * weights.size +
                 versatility * weights.versatility;
+
+            const composite = clamp(
+                footballComposite +
+                    positionValueAdjustment(position),
+                0,
+                100
+            );
 
             const grade = scalePercentileToGrade(composite);
             const actualDraft = draftOutcome(
@@ -856,9 +984,6 @@ export const buildProspectBoard = async ({
                 pedigree: Math.round(
                     scalePercentileToGrade(pedigree)
                 ),
-                competition: Math.round(
-                    scalePercentileToGrade(competition)
-                ),
                 size: Math.round(
                     scalePercentileToGrade(size)
                 ),
@@ -879,7 +1004,17 @@ export const buildProspectBoard = async ({
                     receivingYards:
                         player.careerTotals.receiving.yards,
                     receivingTD:
-                        player.careerTotals.receiving.touchdowns
+                        player.careerTotals.receiving.touchdowns,
+                    fieldGoalsMade:
+                        player.careerTotals.kicking.fieldGoalsMade,
+                    fieldGoalAttempts:
+                        player.careerTotals.kicking.fieldGoalAttempts,
+                    extraPointsMade:
+                        player.careerTotals.kicking.extraPointsMade,
+                    extraPointAttempts:
+                        player.careerTotals.kicking.extraPointAttempts,
+                    longFieldGoal:
+                        player.careerTotals.kicking.long
                 },
                 draftOutcome: actualDraft
             });
