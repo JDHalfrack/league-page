@@ -390,13 +390,15 @@ export const buildProspectBoard = async ({
                 position,
                 team: row.team || '',
                 conference: row.conference || '',
-                categoryStats: {}
+                categoryStats: {},
+                seasons: new Set()
             });
         }
 
         const player = players.get(id);
         player.team = row.team || player.team;
         player.conference = row.conference || player.conference;
+        player.seasons.add(Number(row.season || cutoffYear));
 
         addCategoryStat(
             player,
@@ -440,7 +442,23 @@ export const buildProspectBoard = async ({
         };
     });
 
-    rows = rows.filter(player => player.productionRaw > 1);
+    /*
+        A board for a given cutoff season should represent players who were
+        actually still playing college football in that season.
+
+        Without this filter, the multi-year stat window also pulls in players
+        whose last college season was earlier — including players already
+        drafted into the NFL. Their old production is useful as history, but
+        they must not remain on a later prospect board.
+
+        We still use prior seasons to CALCULATE a player's grade; this filter
+        only determines who belongs on the selected season's board.
+    */
+    rows = rows.filter(
+        player =>
+            player.productionRaw > 1 &&
+            player.seasons.has(cutoffYear)
+    );
 
     const scored = [];
 
@@ -558,7 +576,7 @@ export const buildProspectBoard = async ({
         currentYear,
         draftYear,
         generatedAt: new Date().toISOString(),
-        modelVersion: '0.1.2',
+        modelVersion: '0.1.3',
         prospects: scored.map((player, index) => ({
             ...player,
             rank: index + 1
