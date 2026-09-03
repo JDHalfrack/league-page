@@ -72,13 +72,14 @@
 
 	.parent {
 		position: relative;
+		z-index: 5;
 	}
 
 	.subMenu {
 		overflow-y: hidden;
 		display: block;
 		position: absolute;
-		z-index: 5;
+		z-index: 6;
 		background-color: var(--fff);
 		transition: all 0.4s;
 	}
