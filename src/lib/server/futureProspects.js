@@ -282,7 +282,9 @@ const fetchStatsThrough = async (cutoffYear, endWeek) => {
             endWeek: year === cutoffYear ? endWeek : undefined
         });
 
-        rows.push(...result);
+        for (const row of result) {
+            rows.push(row);
+        }
         await sleep(REQUEST_GAP_MS);
     }
 
@@ -299,7 +301,9 @@ const fetchRecruiting = async cutoffYear => {
                 classification: 'HighSchool'
             });
 
-            rows.push(...result);
+            for (const row of result) {
+            rows.push(row);
+        }
         } catch (err) {
             /*
                 Recruiting enrichment should never destroy the entire board.
@@ -554,7 +558,7 @@ export const buildProspectBoard = async ({
         currentYear,
         draftYear,
         generatedAt: new Date().toISOString(),
-        modelVersion: '0.1.1',
+        modelVersion: '0.1.2',
         prospects: scored.map((player, index) => ({
             ...player,
             rank: index + 1
