@@ -4,7 +4,7 @@ const SKILL_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE', 'K']);
 const MIN_GRADE = 40;
 const MAX_GRADE = 99;
 const REQUEST_GAP_MS = 25;
-const MODEL_VERSION = '0.3.2';
+const MODEL_VERSION = '0.3.3';
 
 const sleep = milliseconds =>
     new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -127,7 +127,7 @@ const positionValueAdjustment = position => {
     if (position === 'RB') return 1.4;
     if (position === 'QB') return 0.2;
     if (position === 'TE') return 0;
-    if (position === 'K') return -4.0;
+    if (position === 'K') return -18.0;
     return 0;
 };
 
@@ -940,7 +940,23 @@ export const buildProspectBoard = async ({
                 100
             );
 
-            const grade = scalePercentileToGrade(composite);
+            const uncappedGrade = scalePercentileToGrade(composite);
+
+            /*
+                Kicker ceiling:
+                A kicker can still separate himself from other kickers, but even
+                an absurd college kicking season does not make him a premium
+                dynasty/NFL draft prospect ahead of viable QB/RB/WR/TE players.
+
+                Keep K inside the Sleeper / Long Shot band on the universal
+                prospect board. This is a positional-value ceiling, not a claim
+                that the kicker himself is bad at kicking.
+            */
+            const grade =
+                position === 'K'
+                    ? Math.min(uncappedGrade, 69.9)
+                    : uncappedGrade;
+
             const actualDraft = draftOutcome(
                 draftById.get(player.id)
             );
