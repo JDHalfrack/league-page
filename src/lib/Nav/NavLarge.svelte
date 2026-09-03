@@ -3,60 +3,78 @@
 	import Tab, { Icon, Label } from '@smui/tab';
 	import List, { Item, Graphic, Text, Separator } from '@smui/list';
 	import TabBar from '@smui/tab-bar';
-    import { page } from '$app/state';
+	import { page } from '$app/state';
 	import { goto, preloadData } from '$app/navigation';
 	import { enableBlog } from '$lib/utils/leagueInfo';
 
-	let active = $state(tabs.find(tab => tab.dest == page.url.pathname || (tab.nest && tab.children.find(subTab => subTab.dest == page.url.pathname))));
+	let active = $state(
+		tabs.find(
+			tab =>
+				tab.dest == page.url.pathname ||
+				(tab.nest && tab.children.find(subTab => subTab.dest == page.url.pathname))
+		)
+	);
 
 	let display = $state(false);
-	let el = $state();
-	let width = $state();
-	let height= $state();
-	let left = $state();
-	let top = $state();
-
-	$effect(() => {
-		top = el?.getBoundingClientRect() ? el?.getBoundingClientRect().top  : 0;
-		const bottom = el?.getBoundingClientRect() ? el?.getBoundingClientRect().bottom  : 0;
-
-		height = bottom - top + 1;
-
-		left = el?.getBoundingClientRect() ? el?.getBoundingClientRect().left  : 0;
-		const right = el?.getBoundingClientRect() ? el?.getBoundingClientRect().right  : 0;
-
-		width = right - left;
-	});
-
+	let activeNestedTab = $state(null);
+	let parentEl = $state();
+	let width = $state(0);
+	let height = $state(0);
+	let left = $state(0);
 	let innerWidth = $state();
 
-	const open = () => {
-		display = !display;
-	}
+	const openNestedMenu = (tab, event) => {
+		const wasSameTab = activeNestedTab?.key === tab.key;
+		const shouldClose = display && wasSameTab;
 
-	const subGoto = (dest) => {
-		open(false);
-		goto(dest);
-	}
-
-	let tabChildren = $state([]);
-
-	for(const tab of tabs) {
-		if(tab.nest) {
-			tabChildren = tab.children;
+		if (shouldClose) {
+			display = false;
+			activeNestedTab = null;
+			return;
 		}
-	}
 
+		activeNestedTab = tab;
+
+		const tabRect = event?.currentTarget?.getBoundingClientRect?.();
+		const parentRect = parentEl?.getBoundingClientRect?.();
+
+		if (tabRect && parentRect) {
+			width = tabRect.width;
+			height = tabRect.bottom - parentRect.top + 1;
+			left = tabRect.left - parentRect.left;
+		}
+
+		display = true;
+	};
+
+	const closeMenu = () => {
+		display = false;
+		activeNestedTab = null;
+	};
+
+	const subGoto = dest => {
+		closeMenu();
+		goto(dest);
+	};
+
+	$effect(() => {
+		// Recalculate/close on viewport changes so an old menu cannot remain
+		// positioned under the wrong tab after a resize.
+		if (innerWidth && display) {
+			display = false;
+			activeNestedTab = null;
+		}
+	});
 </script>
 
 <svelte:window bind:innerWidth={innerWidth} />
 
 <style>
-    :global(.navBar) {
+	:global(.navBar) {
 		display: inline-flex;
 		position: relative;
-    	justify-content: center;
-    }
+		justify-content: center;
+	}
 
 	:global(.navBar .material-icons) {
 		font-size: 1.8em;
@@ -83,7 +101,6 @@
 		top: 0;
 		left: 0;
 		width: 100%;
-		height: 100%;
 		height: 100vh;
 		z-index: 4;
 	}
@@ -101,22 +118,26 @@
 	}
 </style>
 
-<div tabindex="0" role="button" class="overlay" style="display: {display ? "block" : "none"};" onclick={() => open(true)}></div>
+<div
+	tabindex="0"
+	role="button"
+	class="overlay"
+	style="display: {display ? 'block' : 'none'};"
+	onclick={closeMenu}
+></div>
 
-<div class="parent">
+<div class="parent" bind:this={parentEl}>
 	<TabBar class="navBar" {tabs} key={(tab) => tab.key} bind:active>
 		{#snippet tab(tab)}
 			{#if tab.nest}
-				<div bind:this={el}>
-					<Tab
-						{tab}
-						minWidth
-						onclick={() => open()}
-					>
-						<Icon class="material-icons">{tab.icon}</Icon>
-						<Label>{tab.label}</Label>
-					</Tab>
-				</div>
+				<Tab
+					{tab}
+					minWidth
+					onclick={(event) => openNestedMenu(tab, event)}
+				>
+					<Icon class="material-icons">{tab.icon}</Icon>
+					<Label>{tab.label}</Label>
+				</Tab>
 			{:else}
 				<Tab
 					class="{tab.label == 'Blog' && !enableBlog ? 'dontDisplay' : ''}"
@@ -132,35 +153,40 @@
 			{/if}
 		{/snippet}
 	</TabBar>
-<div
-	class="subMenu"
-	style="max-height: {display ? 49 * tabChildren.length - 1 : 0}px;
-		width: {width}px;
-		top: {height}px;
-		left: {left}px;
-		box-shadow: 0 0 {display ? "3px" : "0"} 0 #00316b;
-		border: {display ? "1px" : "0"} solid #00316b;
-		border-top: none;"
->
-	<List>
-		{#each tabChildren as subTab, ix}
-			<Item
-				onSMUIAction={() => subGoto(subTab.dest)}
-				ontouchstart={() => {
-					if (subTab.label != 'Go to Sleeper') preloadData(subTab.dest)
-				}}
-				onmouseover={() => {
-					if (subTab.label != 'Go to Sleeper') preloadData(subTab.dest)
-				}}
-			>
-				<Graphic class="material-icons">{subTab.icon}</Graphic>
-				<Text class="subText">{subTab.label}</Text>
-			</Item>
 
-			{#if ix != tabChildren.length - 1}
-				<Separator />
+	<div
+		class="subMenu"
+		style="max-height: {display && activeNestedTab
+			? 49 * activeNestedTab.children.length - 1
+			: 0}px;
+			width: {width}px;
+			top: {height}px;
+			left: {left}px;
+			box-shadow: 0 0 {display ? '3px' : '0'} 0 #00316b;
+			border: {display ? '1px' : '0'} solid #00316b;
+			border-top: none;"
+	>
+		<List>
+			{#if activeNestedTab}
+				{#each activeNestedTab.children as subTab, ix}
+					<Item
+						onSMUIAction={() => subGoto(subTab.dest)}
+						ontouchstart={() => {
+							if (subTab.label != 'Go to Sleeper') preloadData(subTab.dest);
+						}}
+						onmouseover={() => {
+							if (subTab.label != 'Go to Sleeper') preloadData(subTab.dest);
+						}}
+					>
+						<Graphic class="material-icons">{subTab.icon}</Graphic>
+						<Text class="subText">{subTab.label}</Text>
+					</Item>
+
+					{#if ix != activeNestedTab.children.length - 1}
+						<Separator />
+					{/if}
+				{/each}
 			{/if}
-		{/each}
-	</List>
-</div>
+		</List>
+	</div>
 </div>
