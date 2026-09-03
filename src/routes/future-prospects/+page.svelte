@@ -12,14 +12,16 @@
     let statusFilter = 'all';
 
     const currentYear = new Date().getFullYear();
-    const availableYears = Array.from(
-        { length: Math.max(1, currentYear - 2018) },
-        (_, index) => currentYear - index
+    const defaultProspectClass = currentYear + 1;
+    const availableProspectClasses = Array.from(
+        { length: Math.max(1, defaultProspectClass - 2019) },
+        (_, index) => defaultProspectClass - index
     );
 
     const normalize = value => String(value || '').toLowerCase().trim();
 
-    $: cutoffYear = Number(board?.cutoffYear || currentYear);
+    $: prospectClass = Number(board?.prospectClass || defaultProspectClass);
+    $: cutoffYear = Number(board?.cutoffYear || prospectClass - 1);
     $: positions = [...new Set(prospects.map(player => player.position))].filter(Boolean).sort();
     $: statuses = [...new Set(prospects.map(player => player.status))].filter(Boolean).sort();
 
@@ -41,8 +43,8 @@
     $: eliteCount = prospects.filter(player => player.grade >= 90).length;
     $: eligibleCount = prospects.filter(player => String(player.status || '').includes('Eligible')).length;
 
-    const changeCutoffYear = event => {
-        goto(`/future-prospects?year=${Number(event.currentTarget.value)}`);
+    const changeProspectClass = event => {
+        goto(`/future-prospects?class=${Number(event.currentTarget.value)}`);
     };
 
     const gradeClass = grade => {
@@ -97,8 +99,8 @@
             <h1>Future Prospects</h1>
             <p class="lede">
                 A living dynasty board for college players who could matter in future USCCFFL rookie drafts.
-                The board is built from CollegeFootballData and can be rolled backward to historical seasons
-                so the model can be backtested without using future information.
+                Choose a prospect class to recreate what the board should have looked like before that NFL Draft,
+                using college data only through the preceding season.
             </p>
 
             <div class="modelNotice">
@@ -115,18 +117,16 @@
 
         <div class="rightRail">
             <label class="cutoffCard">
-                <span>Evaluate using data through</span>
-                <select value={cutoffYear} onchange={changeCutoffYear}>
-                    {#each availableYears as year}
-                        <option value={year}>{year} Season</option>
+                <span>Prospect class</span>
+                <select value={prospectClass} onchange={changeProspectClass}>
+                    {#each availableProspectClasses as classYear}
+                        <option value={classYear}>{classYear} Prospects</option>
                     {/each}
                 </select>
+
                 <small>
-                    {#if cutoffYear === currentYear}
-                        Current board — latest completed CFBD data
-                    {:else}
-                        Historical backtest — later college seasons are excluded
-                    {/if}
+                    Uses college stats through the {cutoffYear} season.
+                    Players drafted in {cutoffYear} or earlier are excluded.
                 </small>
             </label>
 
@@ -154,10 +154,10 @@
         <section class="summaryBar">
             <div><span>Prospects tracked</span><strong>{prospects.length}</strong></div>
             <div><span>90+ grades</span><strong>{eliteCount}</strong></div>
-            <div><span>{board?.draftYear || cutoffYear + 1} eligible</span><strong>{eligibleCount}</strong></div>
+            <div><span>{prospectClass} eligible</span><strong>{eligibleCount}</strong></div>
             <div>
-                <span>Data cutoff</span>
-                <strong>{cutoffYear}</strong>
+                <span>Prospect class</span>
+                <strong>{prospectClass}</strong>
                 <small>{board?.generatedAt ? `Built ${formatGeneratedAt(board.generatedAt)}` : ''}</small>
             </div>
         </section>
@@ -169,7 +169,7 @@
                         <div class="eyebrow">Top of the board</div>
                         <h2>Featured Prospects</h2>
                     </div>
-                    <span>{cutoffYear === currentYear ? 'Current CFBD board' : `${cutoffYear} backtest`}</span>
+                    <span>`${prospectClass} prospect board · stats through ${cutoffYear}`</span>
                 </div>
 
                 <div class="featuredGrid">
@@ -285,7 +285,7 @@
                 <div><span class="methodNumber">06</span><h3>Backtesting</h3><p>Historical NFL draft outcomes can be shown separately. They are never fed into the selected historical prospect grade.</p></div>
             </div>
             <div class="footerNote">
-                <strong>Current model rule:</strong> the selected cutoff year is a hard wall. Later college seasons and later NFL information are not allowed to influence that prospect grade.
+                <strong>Current model rule:</strong> selecting {prospectClass} Prospects uses college data through the {cutoffYear} season. Players already drafted in {cutoffYear} or earlier are removed. The {prospectClass} NFL Draft can later be shown as a backtesting outcome, but it never influences the grade.
             </div>
         </section>
     {/if}
