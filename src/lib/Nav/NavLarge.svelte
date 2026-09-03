@@ -131,6 +131,7 @@
 				<Tab
 					class="{tab.label == 'Blog' && !enableBlog ? 'dontDisplay' : ''}"
 					{tab}
+					onclick={closeMenu}
 					onTouchstart={() => preloadData(tab.dest)}
 					onMouseover={() => preloadData(tab.dest)}
 					href={tab.dest}
