@@ -24,7 +24,7 @@
         (_, index) => defaultProspectClass - index
     );
 
-    const CACHE_PREFIX = 'usccffl-future-prospects-v2.7:';
+    const CACHE_PREFIX = 'usccffl-future-prospects-v3.0:';
 
     const normalize = value => String(value || '').toLowerCase().trim();
 
@@ -134,7 +134,7 @@
 
         try {
             const response = await fetch(
-                `/api/future-prospects?class=${classYear}`,
+                `/api/future-prospects?class=${classYear}&model=0.3.0`,
                 {
                     signal: activeController.signal,
                     headers: {
@@ -209,27 +209,21 @@
     };
 
     const profileLine = player =>
-        [player.position, player.school, player.classYear]
+        [
+            player.position,
+            player.school,
+            player.collegeClass,
+            player.recruitLabel
+        ]
             .filter(Boolean)
             .join(' · ');
 
-    const featuredMetrics = player => {
-        if (player.position === 'RB') {
-            return [
-                ['Production', player.production],
-                ['Efficiency', player.efficiency],
-                ['Receiving', player.versatility],
-                ['Development', player.ageProfile]
-            ];
-        }
-
-        return [
-            ['Production', player.production],
-            ['Efficiency', player.efficiency],
-            ['Development', player.ageProfile],
-            ['Pedigree', player.pedigree]
-        ];
-    };
+    const featuredMetrics = player => [
+        ['Production', player.production],
+        ['Efficiency', player.efficiency],
+        ['Development', player.development],
+        ['Size', player.size]
+    ];
 </script>
 
 <svelte:head>
@@ -252,8 +246,8 @@
                 <div>
                     <strong>Model v{board?.modelVersion || '0.1.0'}</strong>
                     <span>
-                        This is the first empirical model. We are deliberately backtesting and tuning it
-                        before treating the weighting system as final.
+                        Historical snapshots now use only the résumé available at that point in time,
+                        with sample-size confidence, college stage, and position-specific size included.
                     </span>
                 </div>
             </div>
@@ -308,13 +302,13 @@
             </div>
 
             <p>
-                Pulling historical college stats, recruiting context, draft history,
-                and calculating the prospect grades.
+                Pulling historical college stats and recruiting context, then rebuilding
+                each player's résumé as it existed before this draft class.
             </p>
 
             <small>
-                The first uncached load for a class can take a while. Once loaded in
-                this browser session, returning to that class should be immediate.
+                The first uncached load can still take a while. Server-side CFBD reuse,
+                CDN caching, and this browser-session cache should make repeat loads much faster.
             </small>
         </section>
     {:else if loadError}
@@ -421,7 +415,7 @@
                                 <div class="smallAvatar">{player.position}</div>
                                 <div class="playerText">
                                     <h3>{player.name}</h3>
-                                    <p>{player.position} · {player.school} · {player.classYear}</p>
+                                    <p>{player.position} · {player.school} · {player.collegeClass} · {player.recruitLabel}</p>
                                     <span class="mobileStatus">{player.status}</span>
                                 </div>
                             </div>
@@ -432,12 +426,18 @@
                             <div class="subgradeCell">
                                 <span>P {player.production}</span>
                                 <span>E {player.efficiency}</span>
-                                <span>D {player.ageProfile}</span>
-                                <span>R {player.pedigree}</span>
+                                <span>D {player.development}</span>
+                                <span>S {player.size}</span>
                             </div>
                             <div class="profileCell">
                                 <strong>{player.draftOutcome ? player.draftOutcome.label : player.status}</strong>
-                                <span>{[player.height, player.weight ? `${player.weight} lb` : '', player.stars ? `${player.stars}★ recruit` : ''].filter(Boolean).join(' · ')}</span>
+                                <span>{[
+                                    player.collegeClass,
+                                    `${player.observedSeasons || 1} season${player.observedSeasons === 1 ? '' : 's'} of evidence`,
+                                    player.height,
+                                    player.weight ? `${player.weight} lb` : '',
+                                    player.stars ? `${player.stars}★ recruit` : ''
+                                ].filter(Boolean).join(' · ')}</span>
                             </div>
                         </article>
                     {/each}
@@ -450,12 +450,12 @@
         <section class="methodology">
             <div class="sectionHeading"><div><div class="eyebrow">Model philosophy</div><h2>What Model v{board?.modelVersion || '0.1.0'} measures</h2></div></div>
             <div class="methodGrid">
-                <div><span class="methodNumber">01</span><h3>Production</h3><p>Multi-season passing, rushing and receiving production through the selected cutoff, normalized against same-position peers.</p></div>
-                <div><span class="methodNumber">02</span><h3>Efficiency</h3><p>Position-specific rates such as yards per attempt/touch and touchdown efficiency, rather than volume alone.</p></div>
-                <div><span class="methodNumber">03</span><h3>Development Timing</h3><p>Producing earlier in a college career receives more credit. Recruiting class year is the first age/development proxy.</p></div>
-                <div><span class="methodNumber">04</span><h3>Recruiting Pedigree</h3><p>CFBD recruiting rating and stars provide prior information, but they cannot override college production.</p></div>
-                <div><span class="methodNumber">05</span><h3>Competition Context</h3><p>CFBD SP+ strength-of-schedule/team context is normalized within each position group.</p></div>
-                <div><span class="methodNumber">06</span><h3>Backtesting</h3><p>Historical NFL draft outcomes can be shown separately. They are never fed into the selected historical prospect grade.</p></div>
+                <div><span class="methodNumber">01</span><h3>Growing Résumé</h3><p>Only seasons available before the selected prospect class are used. Career production is blended with the latest available season so development and decline move the grade over time.</p></div>
+                <div><span class="methodNumber">02</span><h3>Evidence Confidence</h3><p>One-season résumés are pulled toward neutral rather than treated with the same certainty as three or four years of production. This prevents an elite freshman season from automatically becoming a finished NFL profile.</p></div>
+                <div><span class="methodNumber">03</span><h3>College Stage</h3><p>Junior receives the strongest stage bump, senior and sophomore are approximately equal, and freshman is lower because freshmen are not yet draft eligible. The adjustment is deliberately modest.</p></div>
+                <div><span class="methodNumber">04</span><h3>Size Profile</h3><p>Height and weight contribute a modest position-specific score. The model uses viable NFL ranges rather than simply rewarding bigger players.</p></div>
+                <div><span class="methodNumber">05</span><h3>Pedigree & Competition</h3><p>Recruiting pedigree and CFBD team/competition context remain supporting signals; neither can override sustained college production.</p></div>
+                <div><span class="methodNumber">06</span><h3>Backtesting</h3><p>The NFL Draft for the selected prospect class is outcome data only. It is never allowed to influence that historical prospect grade.</p></div>
             </div>
             <div class="footerNote">
                 <strong>Current model rule:</strong> selecting {prospectClass} Prospects uses college data through the {cutoffYear} season. Players already drafted in {cutoffYear} or earlier are removed. The {prospectClass} NFL Draft can later be shown as a backtesting outcome, but it never influences the grade.
