@@ -21,7 +21,6 @@
 	let width = $state(0);
 	let height = $state(0);
 	let left = $state(0);
-	let innerWidth = $state();
 
 	const openNestedMenu = (tab, event) => {
 		const wasSameTab = activeNestedTab?.key === tab.key;
@@ -56,18 +55,7 @@
 		closeMenu();
 		goto(dest);
 	};
-
-	$effect(() => {
-		// Recalculate/close on viewport changes so an old menu cannot remain
-		// positioned under the wrong tab after a resize.
-		if (innerWidth && display) {
-			display = false;
-			activeNestedTab = null;
-		}
-	});
 </script>
-
-<svelte:window bind:innerWidth={innerWidth} />
 
 <style>
 	:global(.navBar) {
