@@ -5,22 +5,47 @@ const currentSeasonYear = () => new Date().getFullYear();
 
 export async function GET({ url, setHeaders }) {
     const currentYear = currentSeasonYear();
+    const defaultProspectClass = currentYear + 1;
 
-    const requestedYear = Number(url.searchParams.get('year'));
-    const cutoffYear =
-        Number.isInteger(requestedYear) && requestedYear >= 2010 && requestedYear <= currentYear
-            ? requestedYear
-            : currentYear;
+    const requestedClass = Number(url.searchParams.get('class'));
+    const legacyRequestedYear = Number(url.searchParams.get('year'));
+
+    let prospectClass = defaultProspectClass;
+
+    if (
+        Number.isInteger(requestedClass) &&
+        requestedClass >= 2011 &&
+        requestedClass <= currentYear + 1
+    ) {
+        prospectClass = requestedClass;
+    } else if (
+        Number.isInteger(legacyRequestedYear) &&
+        legacyRequestedYear >= 2010 &&
+        legacyRequestedYear <= currentYear
+    ) {
+        // Backward compatibility for old ?year=2026 links.
+        prospectClass = legacyRequestedYear + 1;
+    }
+
+    const cutoffYear = prospectClass - 1;
 
     const requestedWeek = Number(url.searchParams.get('week'));
-    const endWeek = Number.isInteger(requestedWeek) && requestedWeek > 0 ? requestedWeek : null;
+    const endWeek =
+        Number.isInteger(requestedWeek) && requestedWeek > 0
+            ? requestedWeek
+            : null;
 
     try {
-        const board = await buildProspectBoard({ cutoffYear, endWeek, currentYear });
+        const board = await buildProspectBoard({
+            prospectClass,
+            cutoffYear,
+            endWeek,
+            currentYear
+        });
 
         setHeaders({
             'cache-control':
-                cutoffYear === currentYear
+                prospectClass === defaultProspectClass
                     ? 'public, s-maxage=21600, stale-while-revalidate=43200'
                     : 'public, s-maxage=86400, stale-while-revalidate=604800'
         });
@@ -33,7 +58,9 @@ export async function GET({ url, setHeaders }) {
             {
                 error: true,
                 message:
-                    err?.message || 'Future Prospects could not load from CollegeFootballData.',
+                    err?.message ||
+                    'Future Prospects could not load from CollegeFootballData.',
+                prospectClass,
                 cutoffYear,
                 prospects: []
             },
