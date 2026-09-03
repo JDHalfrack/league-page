@@ -1,6 +1,10 @@
 import { env } from '$env/dynamic/private';
 
 const BASE_URL = 'https://api.collegefootballdata.com';
+const MAX_RETRIES = 4;
+
+const sleep = milliseconds =>
+    new Promise(resolve => setTimeout(resolve, milliseconds));
 
 const buildUrl = (path, params = {}) => {
     const url = new URL(`${BASE_URL}${path}`);
@@ -13,6 +17,20 @@ const buildUrl = (path, params = {}) => {
     return url;
 };
 
+const retryDelay = (response, attempt) => {
+    const retryAfter = response.headers.get('retry-after');
+
+    if (retryAfter) {
+        const seconds = Number(retryAfter);
+        if (Number.isFinite(seconds) && seconds > 0) {
+            return seconds * 1000;
+        }
+    }
+
+    // 0.75s, 1.5s, 3s, 6s
+    return 750 * Math.pow(2, attempt);
+};
+
 export const cfbdGet = async (path, params = {}) => {
     const apiKey = env.CFBD_API_KEY;
 
@@ -22,19 +40,30 @@ export const cfbdGet = async (path, params = {}) => {
         );
     }
 
-    const response = await fetch(buildUrl(path, params), {
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: 'application/json'
-        }
-    });
+    const url = buildUrl(path, params);
 
-    if (!response.ok) {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        const response = await fetch(url, {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                Accept: 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            return response.json();
+        }
+
         let detail = '';
         try {
             detail = await response.text();
         } catch {
             detail = '';
+        }
+
+        if (response.status === 429 && attempt < MAX_RETRIES) {
+            await sleep(retryDelay(response, attempt));
+            continue;
         }
 
         throw new Error(
@@ -44,5 +73,5 @@ export const cfbdGet = async (path, params = {}) => {
         );
     }
 
-    return response.json();
+    throw new Error(`CFBD ${path} failed after ${MAX_RETRIES + 1} attempts.`);
 };
