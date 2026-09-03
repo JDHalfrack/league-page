@@ -45,7 +45,7 @@ export async function GET({ url, setHeaders }) {
         setHeaders({
             'cache-control':
                 prospectClass === defaultProspectClass
-                    ? 'public, s-maxage=21600, stale-while-revalidate=86400'
+                    ? 'public, s-maxage=43200, stale-while-revalidate=172800'
                     : 'public, s-maxage=604800, stale-while-revalidate=2592000'
         });
 
