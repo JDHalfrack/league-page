@@ -3,6 +3,10 @@ import { cfbdGet } from '$lib/server/cfbd';
 const SKILL_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
 const MIN_GRADE = 40;
 const MAX_GRADE = 99;
+const REQUEST_GAP_MS = 175;
+
+const sleep = milliseconds =>
+    new Promise(resolve => setTimeout(resolve, milliseconds));
 
 const cleanKey = value =>
     String(value || '')
@@ -65,22 +69,58 @@ const tierForGrade = grade => {
 
 const weightsForPosition = position => {
     if (position === 'QB') {
-        return { production: 0.29, efficiency: 0.25, age: 0.16, pedigree: 0.14, competition: 0.10, versatility: 0.06 };
+        return {
+            production: 0.29,
+            efficiency: 0.25,
+            age: 0.16,
+            pedigree: 0.14,
+            competition: 0.10,
+            versatility: 0.06
+        };
     }
+
     if (position === 'RB') {
-        return { production: 0.30, efficiency: 0.19, age: 0.17, pedigree: 0.13, competition: 0.08, versatility: 0.13 };
+        return {
+            production: 0.30,
+            efficiency: 0.19,
+            age: 0.17,
+            pedigree: 0.13,
+            competition: 0.08,
+            versatility: 0.13
+        };
     }
+
     if (position === 'TE') {
-        return { production: 0.28, efficiency: 0.21, age: 0.18, pedigree: 0.14, competition: 0.10, versatility: 0.09 };
+        return {
+            production: 0.28,
+            efficiency: 0.21,
+            age: 0.18,
+            pedigree: 0.14,
+            competition: 0.10,
+            versatility: 0.09
+        };
     }
-    return { production: 0.31, efficiency: 0.21, age: 0.18, pedigree: 0.14, competition: 0.10, versatility: 0.06 };
+
+    return {
+        production: 0.31,
+        efficiency: 0.21,
+        age: 0.18,
+        pedigree: 0.14,
+        competition: 0.10,
+        versatility: 0.06
+    };
 };
 
 const addCategoryStat = (player, category, statType, amount) => {
     const cat = cleanKey(category || 'other');
     const key = cleanKey(statType);
-    if (!player.categoryStats[cat]) player.categoryStats[cat] = {};
-    player.categoryStats[cat][key] = (player.categoryStats[cat][key] || 0) + amount;
+
+    if (!player.categoryStats[cat]) {
+        player.categoryStats[cat] = {};
+    }
+
+    player.categoryStats[cat][key] =
+        (player.categoryStats[cat][key] || 0) + amount;
 };
 
 const statFrom = (category, aliases) => {
@@ -88,6 +128,7 @@ const statFrom = (category, aliases) => {
         const key = cleanKey(alias);
         if (category[key] !== undefined) return category[key];
     }
+
     return 0;
 };
 
@@ -115,25 +156,56 @@ const calculateRawMetrics = player => {
     let versatilityRaw = 0;
 
     if (player.position === 'QB') {
-        productionRaw = pYds / 35 + pTD * 5 - pInt * 2 + rYds / 12 + rTD * 5;
+        productionRaw =
+            pYds / 35 +
+            pTD * 5 -
+            pInt * 2 +
+            rYds / 12 +
+            rTD * 5;
+
         efficiencyRaw =
             safeRate(pYds, pAtt) * 8 +
             safeRate(pTD, pAtt) * 500 -
             safeRate(pInt, pAtt) * 350 +
             safeRate(pCmp, pAtt) * 35;
-        versatilityRaw = rYds / 10 + rTD * 5;
+
+        versatilityRaw =
+            rYds / 10 +
+            rTD * 5;
     } else if (player.position === 'RB') {
         const touches = rAtt + catches;
-        productionRaw = rYds / 10 + rTD * 7 + reYds / 12 + reTD * 7 + catches * 0.8;
+
+        productionRaw =
+            rYds / 10 +
+            rTD * 7 +
+            reYds / 12 +
+            reTD * 7 +
+            catches * 0.8;
+
         efficiencyRaw =
             safeRate(rYds, rAtt) * 11 +
             safeRate(reYds, catches) * 3 +
             safeRate(rTD + reTD, touches) * 220;
-        versatilityRaw = catches * 1.7 + reYds / 10 + reTD * 6;
+
+        versatilityRaw =
+            catches * 1.7 +
+            reYds / 10 +
+            reTD * 6;
     } else {
-        productionRaw = reYds / 10 + reTD * 8 + catches * 1.1 + rYds / 15 + rTD * 6;
-        efficiencyRaw = safeRate(reYds, catches) * 5 + safeRate(reTD, catches) * 180;
-        versatilityRaw = rYds / 8 + rTD * 6;
+        productionRaw =
+            reYds / 10 +
+            reTD * 8 +
+            catches * 1.1 +
+            rYds / 15 +
+            rTD * 6;
+
+        efficiencyRaw =
+            safeRate(reYds, catches) * 5 +
+            safeRate(reTD, catches) * 180;
+
+        versatilityRaw =
+            rYds / 8 +
+            rTD * 6;
     }
 
     return {
@@ -166,74 +238,144 @@ const formatHeight = inches => {
 
 const eligibilityLabel = (recruitYear, cutoffYear) => {
     if (!recruitYear) return 'Eligibility unknown';
-    return recruitYear <= cutoffYear - 2 ? `${cutoffYear + 1} Eligible` : 'Future Class';
+
+    return recruitYear <= cutoffYear - 2
+        ? `${cutoffYear + 1} Eligible`
+        : 'Future Class';
 };
 
 const draftOutcome = pick => {
     if (!pick) return null;
+
     const round = pick.round ?? null;
     const overall = pick.overall ?? pick.overallPick ?? pick.pick ?? null;
     const team = pick.nflTeam ?? pick.team ?? pick.nflTeamName ?? null;
+
     const parts = [];
     if (round) parts.push(`Round ${round}`);
     if (overall) parts.push(`Pick ${overall}`);
     if (team) parts.push(team);
-    return { round, pick: overall, team, label: parts.join(', ') || 'Drafted' };
+
+    return {
+        round,
+        pick: overall,
+        team,
+        label: parts.join(', ') || 'Drafted'
+    };
 };
 
-const fetchStatsThrough = async (cutoffYear, endWeek) => {
-    const years = [];
-    for (let year = cutoffYear - 3; year <= cutoffYear; year++) years.push(year);
+/*
+    CFBD's free access can reject a burst of simultaneous requests with 429:
+    "Too many concurrent requests for this endpoint."
 
-    const responses = await Promise.all(
-        years.map(year =>
-            cfbdGet('/stats/player/season', {
-                year,
-                seasonType: 'both',
-                endWeek: year === cutoffYear ? endWeek : undefined
-            })
-        )
-    );
-    return responses.flat();
+    These helpers intentionally request one season at a time. The small gap is
+    not for quota management; it simply prevents us from hammering an endpoint
+    with overlapping requests.
+*/
+const fetchStatsThrough = async (cutoffYear, endWeek) => {
+    const rows = [];
+
+    for (let year = cutoffYear - 3; year <= cutoffYear; year++) {
+        const result = await cfbdGet('/stats/player/season', {
+            year,
+            seasonType: 'both',
+            endWeek: year === cutoffYear ? endWeek : undefined
+        });
+
+        rows.push(...result);
+        await sleep(REQUEST_GAP_MS);
+    }
+
+    return rows;
 };
 
 const fetchRecruiting = async cutoffYear => {
-    const years = [];
-    for (let year = cutoffYear - 6; year <= cutoffYear; year++) years.push(year);
-    const responses = await Promise.all(
-        years.map(year =>
-            cfbdGet('/recruiting/players', { year, classification: 'HighSchool' }).catch(() => [])
-        )
-    );
-    return responses.flat();
+    const rows = [];
+
+    for (let year = cutoffYear - 6; year <= cutoffYear; year++) {
+        try {
+            const result = await cfbdGet('/recruiting/players', {
+                year,
+                classification: 'HighSchool'
+            });
+
+            rows.push(...result);
+        } catch (err) {
+            /*
+                Recruiting enrichment should never destroy the entire board.
+                If one historical recruiting class is unavailable, players can
+                still be graded using neutral pedigree/development fallbacks.
+            */
+            console.warn(`CFBD recruiting ${year} unavailable:`, err?.message || err);
+        }
+
+        await sleep(REQUEST_GAP_MS);
+    }
+
+    return rows;
 };
 
 const buildDraftMap = picks => {
     const map = new Map();
+
     for (const pick of picks || []) {
-        const id = pick.collegeAthleteId ?? pick.cfbdId ?? pick.collegePlayerId ?? null;
-        if (id) map.set(String(id), pick);
+        const id =
+            pick.collegeAthleteId ??
+            pick.cfbdId ??
+            pick.collegePlayerId ??
+            null;
+
+        if (id) {
+            map.set(String(id), pick);
+        }
     }
+
     return map;
 };
 
-export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYear }) => {
+export const buildProspectBoard = async ({
+    cutoffYear,
+    endWeek = null,
+    currentYear
+}) => {
     const draftYear = cutoffYear + 1;
 
-    const [statRows, recruits, spRatings, draftPicks] = await Promise.all([
-        fetchStatsThrough(cutoffYear, endWeek),
-        fetchRecruiting(cutoffYear),
-        cfbdGet('/ratings/sp', { year: cutoffYear }).catch(() => []),
-        draftYear <= currentYear
-            ? cfbdGet('/draft/picks', { year: draftYear }).catch(() => [])
-            : Promise.resolve([])
-    ]);
+    /*
+        Run the CFBD endpoint families sequentially. The previous implementation
+        used Promise.all here and inside the year loops, which generated a burst
+        of 12+ simultaneous requests on the first page load.
+    */
+    const statRows = await fetchStatsThrough(cutoffYear, endWeek);
+
+    const recruits = await fetchRecruiting(cutoffYear);
+
+    let spRatings = [];
+    try {
+        spRatings = await cfbdGet('/ratings/sp', { year: cutoffYear });
+    } catch (err) {
+        console.warn('CFBD SP+ ratings unavailable:', err?.message || err);
+    }
+
+    await sleep(REQUEST_GAP_MS);
+
+    let draftPicks = [];
+    if (draftYear <= currentYear) {
+        try {
+            draftPicks = await cfbdGet('/draft/picks', { year: draftYear });
+        } catch (err) {
+            console.warn(
+                `CFBD draft picks ${draftYear} unavailable:`,
+                err?.message || err
+            );
+        }
+    }
 
     const players = new Map();
 
     for (const row of statRows) {
         const position = String(row.position || '').toUpperCase();
         if (!SKILL_POSITIONS.has(position)) continue;
+
         const id = String(row.playerId || '');
         if (!id) continue;
 
@@ -251,12 +393,21 @@ export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYe
         const player = players.get(id);
         player.team = row.team || player.team;
         player.conference = row.conference || player.conference;
-        addCategoryStat(player, row.category, row.statType, toNumber(row.stat));
+
+        addCategoryStat(
+            player,
+            row.category,
+            row.statType,
+            toNumber(row.stat)
+        );
     }
 
     const recruitById = new Map();
+
     for (const recruit of recruits) {
-        if (recruit?.athleteId) recruitById.set(String(recruit.athleteId), recruit);
+        if (recruit?.athleteId) {
+            recruitById.set(String(recruit.athleteId), recruit);
+        }
     }
 
     const spByTeam = new Map(
@@ -265,11 +416,13 @@ export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYe
             Number(row.sos ?? row.rating ?? 0)
         ])
     );
+
     const draftById = buildDraftMap(draftPicks);
 
     let rows = [...players.values()].map(player => {
         const metrics = calculateRawMetrics(player);
         const recruit = recruitById.get(player.id) || null;
+
         return {
             ...player,
             ...metrics,
@@ -278,23 +431,47 @@ export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYe
             stars: recruit?.stars ?? null,
             height: formatHeight(recruit?.height),
             weight: recruit?.weight ?? null,
-            competitionRaw: spByTeam.get(String(player.team || '').toLowerCase()) ?? 0
+            competitionRaw:
+                spByTeam.get(String(player.team || '').toLowerCase()) ?? 0
         };
     });
 
     rows = rows.filter(player => player.productionRaw > 1);
+
     const scored = [];
 
     for (const position of SKILL_POSITIONS) {
         const peers = rows.filter(player => player.position === position);
         if (!peers.length) continue;
 
-        const productionPct = percentileMap(peers, player => player.productionRaw);
-        const efficiencyPct = percentileMap(peers, player => player.efficiencyRaw);
-        const versatilityPct = percentileMap(peers, player => player.versatilityRaw);
-        const competitionPct = percentileMap(peers, player => player.competitionRaw);
-        const pedigreePeers = peers.filter(player => player.recruitingRating !== null);
-        const pedigreePct = percentileMap(pedigreePeers, player => player.recruitingRating);
+        const productionPct = percentileMap(
+            peers,
+            player => player.productionRaw
+        );
+
+        const efficiencyPct = percentileMap(
+            peers,
+            player => player.efficiencyRaw
+        );
+
+        const versatilityPct = percentileMap(
+            peers,
+            player => player.versatilityRaw
+        );
+
+        const competitionPct = percentileMap(
+            peers,
+            player => player.competitionRaw
+        );
+
+        const pedigreePeers = peers.filter(
+            player => player.recruitingRating !== null
+        );
+
+        const pedigreePct = percentileMap(
+            pedigreePeers,
+            player => player.recruitingRating
+        );
 
         for (const player of peers) {
             const production = productionPct.get(player.id) ?? 50;
@@ -302,7 +479,11 @@ export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYe
             const versatility = versatilityPct.get(player.id) ?? 50;
             const competition = competitionPct.get(player.id) ?? 50;
             const pedigree = pedigreePct.get(player.id) ?? 50;
-            const age = developmentPercentile(player.recruitYear, cutoffYear);
+            const age = developmentPercentile(
+                player.recruitYear,
+                cutoffYear
+            );
+
             const weights = weightsForPosition(position);
 
             const composite =
@@ -314,7 +495,9 @@ export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYe
                 versatility * weights.versatility;
 
             const grade = scalePercentileToGrade(composite);
-            const actualDraft = draftOutcome(draftById.get(player.id));
+            const actualDraft = draftOutcome(
+                draftById.get(player.id)
+            );
 
             scored.push({
                 id: player.id,
@@ -324,25 +507,46 @@ export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYe
                 conference: player.conference,
                 grade,
                 tier: tierForGrade(grade),
-                status: eligibilityLabel(player.recruitYear, cutoffYear),
-                classYear: player.recruitYear ? `Class of ${player.recruitYear}` : 'Class unknown',
+                status: eligibilityLabel(
+                    player.recruitYear,
+                    cutoffYear
+                ),
+                classYear: player.recruitYear
+                    ? `Class of ${player.recruitYear}`
+                    : 'Class unknown',
                 recruitYear: player.recruitYear,
                 height: player.height,
                 weight: player.weight,
                 stars: player.stars,
-                production: Math.round(scalePercentileToGrade(production)),
-                efficiency: Math.round(scalePercentileToGrade(efficiency)),
-                ageProfile: Math.round(scalePercentileToGrade(age)),
-                pedigree: Math.round(scalePercentileToGrade(pedigree)),
-                competition: Math.round(scalePercentileToGrade(competition)),
-                versatility: Math.round(scalePercentileToGrade(versatility)),
+                production: Math.round(
+                    scalePercentileToGrade(production)
+                ),
+                efficiency: Math.round(
+                    scalePercentileToGrade(efficiency)
+                ),
+                ageProfile: Math.round(
+                    scalePercentileToGrade(age)
+                ),
+                pedigree: Math.round(
+                    scalePercentileToGrade(pedigree)
+                ),
+                competition: Math.round(
+                    scalePercentileToGrade(competition)
+                ),
+                versatility: Math.round(
+                    scalePercentileToGrade(versatility)
+                ),
                 summaryStats: player.summaryStats,
                 draftOutcome: actualDraft
             });
         }
     }
 
-    scored.sort((a, b) => b.grade - a.grade || a.name.localeCompare(b.name));
+    scored.sort(
+        (a, b) =>
+            b.grade - a.grade ||
+            a.name.localeCompare(b.name)
+    );
 
     return {
         cutoffYear,
@@ -350,7 +554,10 @@ export const buildProspectBoard = async ({ cutoffYear, endWeek = null, currentYe
         currentYear,
         draftYear,
         generatedAt: new Date().toISOString(),
-        modelVersion: '0.1.0',
-        prospects: scored.map((player, index) => ({ ...player, rank: index + 1 }))
+        modelVersion: '0.1.1',
+        prospects: scored.map((player, index) => ({
+            ...player,
+            rank: index + 1
+        }))
     };
 };
