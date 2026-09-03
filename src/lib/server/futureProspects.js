@@ -275,7 +275,7 @@ const draftOutcome = pick => {
 const fetchStatsThrough = async (cutoffYear, endWeek) => {
     const rows = [];
 
-    for (let year = cutoffYear - 3; year <= cutoffYear; year++) {
+    for (let year = cutoffYear - 5; year <= cutoffYear; year++) {
         const result = await cfbdGet('/stats/player/season', {
             year,
             seasonType: 'both',
@@ -328,20 +328,22 @@ const fetchDraftPicksForYear = async year => {
     }
 };
 
-const fetchDraftedPlayersThrough = async (cutoffYear, currentYear) => {
-    const rows = [];
-    const endYear = Math.min(cutoffYear, currentYear);
-    const startYear = Math.max(2010, cutoffYear - 5);
+const fetchDraftedPlayersBeforeProspectClass = async (prospectClass, currentYear) => {
+    /*
+        A prospect class maps to the college season immediately before it.
 
-    for (let year = startYear; year <= endYear; year++) {
-        const result = await fetchDraftPicksForYear(year);
-        for (const row of result) {
-            rows.push(row);
-        }
-        await sleep(REQUEST_GAP_MS);
-    }
+        2027 Prospects -> use college data through 2026 -> exclude 2026 draftees.
+        2026 Prospects -> use college data through 2025 -> exclude 2025 draftees.
 
-    return rows;
+        Older drafted players are naturally removed by the recency rule below:
+        candidates must have college production in the cutoff season or the
+        immediately preceding season.
+    */
+    const exclusionDraftYear = prospectClass - 1;
+
+    if (exclusionDraftYear > currentYear) return [];
+
+    return fetchDraftPicksForYear(exclusionDraftYear);
 };
 
 const buildDraftMap = picks => {
@@ -381,11 +383,12 @@ const buildDraftedIdSet = picks => {
 };
 
 export const buildProspectBoard = async ({
+    prospectClass,
     cutoffYear,
     endWeek = null,
     currentYear
 }) => {
-    const draftYear = cutoffYear + 1;
+    const draftYear = prospectClass;
 
     /*
         Run the CFBD endpoint families sequentially. The previous implementation
@@ -405,21 +408,22 @@ export const buildProspectBoard = async ({
     await sleep(REQUEST_GAP_MS);
 
     /*
-        Board rule:
-        - if we are evaluating 2027 prospects (cutoffYear 2026), remove anyone
-          already drafted in 2026 or earlier.
-        - if we are evaluating 2026 prospects (cutoffYear 2025), remove anyone
-          already drafted in 2025 or earlier.
+        Prospect-class rule:
 
-        We still separately fetch the NEXT draft class (cutoffYear + 1) so that
-        historical backtests can show who a prospect eventually became.
+        2027 Prospects
+        - college data may include the 2026 season and anything earlier
+        - anyone taken in the 2026 NFL Draft is already gone and is excluded
+        - the 2027 NFL Draft is an OUTCOME for later backtesting, never an input
+
+        2026 Prospects follows the same pattern with 2025 as the cutoff/exclusion
+        year, and so on.
     */
-    const draftedPlayersThroughCutoff = await fetchDraftedPlayersThrough(
-        cutoffYear,
+    const draftedBeforeClass = await fetchDraftedPlayersBeforeProspectClass(
+        prospectClass,
         currentYear
     );
 
-    const draftedIdSet = buildDraftedIdSet(draftedPlayersThroughCutoff);
+    const draftedIdSet = buildDraftedIdSet(draftedBeforeClass);
 
     let draftPicks = [];
     if (draftYear <= currentYear) {
@@ -495,21 +499,37 @@ export const buildProspectBoard = async ({
     });
 
     /*
-        A board for a given cutoff season should represent players who were
-        actually still playing college football in that season.
+        Candidate universe:
 
-        We still use prior seasons to CALCULATE a player's grade; these filters
-        only determine who belongs on the selected season's board.
+        Do NOT require a stat row in the exact cutoff season. That was too strict
+        early in a season and incorrectly removed legitimate top prospects such
+        as players whose current-season CFBD stat rows had not populated yet.
 
-        In addition to the current-season participation check, exclude anyone
-        already taken in the NFL Draft on or before the selected cutoff season.
+        A player qualifies when he has meaningful production in the loaded
+        college history AND has appeared in either:
+        - the cutoff college season, or
+        - the immediately preceding college season.
+
+        Then remove anyone already drafted in the NFL Draft immediately before
+        the selected prospect class.
+
+        Example for 2027 Prospects:
+        - 2026 or 2025 college production can establish that he is still a live
+          candidate.
+        - a 2026 NFL draftee is excluded.
+        - older college seasons still contribute to the grade.
     */
-    rows = rows.filter(
-        player =>
+    rows = rows.filter(player => {
+        const hasRecentCollegeProduction =
+            player.seasons.has(cutoffYear) ||
+            player.seasons.has(cutoffYear - 1);
+
+        return (
             player.productionRaw > 1 &&
-            player.seasons.has(cutoffYear) &&
+            hasRecentCollegeProduction &&
             !draftedIdSet.has(player.id)
-    );
+        );
+    });
 
     const scored = [];
 
@@ -622,12 +642,13 @@ export const buildProspectBoard = async ({
     );
 
     return {
+        prospectClass,
         cutoffYear,
         endWeek,
         currentYear,
         draftYear,
         generatedAt: new Date().toISOString(),
-        modelVersion: '0.1.4',
+        modelVersion: '0.2.0',
         prospects: scored.map((player, index) => ({
             ...player,
             rank: index + 1
