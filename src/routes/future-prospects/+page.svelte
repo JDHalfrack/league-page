@@ -15,7 +15,6 @@
 
     let searchText = '';
     let positionFilter = 'all';
-    let statusFilter = 'all';
 
     const currentYear = new Date().getFullYear();
     const defaultProspectClass = currentYear + 1;
@@ -24,7 +23,7 @@
         (_, index) => defaultProspectClass - index
     );
 
-    const CACHE_PREFIX = 'usccffl-future-prospects-v3.0:';
+    const CACHE_PREFIX = 'usccffl-future-prospects-v3.2:';
 
     const normalize = value => String(value || '').toLowerCase().trim();
 
@@ -38,13 +37,8 @@
         .filter(Boolean)
         .sort();
 
-    $: statuses = [...new Set(prospects.map(player => player.status))]
-        .filter(Boolean)
-        .sort();
-
     $: filteredProspects = prospects.filter(player => {
         if (positionFilter !== 'all' && player.position !== positionFilter) return false;
-        if (statusFilter !== 'all' && player.status !== statusFilter) return false;
 
         const query = normalize(searchText);
         if (!query) return true;
@@ -117,7 +111,6 @@
         loading = true;
         searchText = '';
         positionFilter = 'all';
-        statusFilter = 'all';
 
         const cached = getSessionBoard(classYear);
 
@@ -134,7 +127,7 @@
 
         try {
             const response = await fetch(
-                `/api/future-prospects?class=${classYear}&model=0.3.0`,
+                `/api/future-prospects?class=${classYear}&model=0.3.2`,
                 {
                     signal: activeController.signal,
                     headers: {
@@ -396,10 +389,6 @@
                     <option value="all">All positions</option>
                     {#each positions as position}<option value={position}>{position}</option>{/each}
                 </select>
-                <select bind:value={statusFilter} aria-label="Eligibility status">
-                    <option value="all">All eligibility</option>
-                    {#each statuses as status}<option value={status}>{status}</option>{/each}
-                </select>
             </div>
 
             <div class="board">
@@ -450,11 +439,11 @@
         <section class="methodology">
             <div class="sectionHeading"><div><div class="eyebrow">Model philosophy</div><h2>What Model v{board?.modelVersion || '0.1.0'} measures</h2></div></div>
             <div class="methodGrid">
-                <div><span class="methodNumber">01</span><h3>Growing Résumé</h3><p>Only seasons available before the selected prospect class are used. Career production is blended with the latest available season so development and decline move the grade over time.</p></div>
-                <div><span class="methodNumber">02</span><h3>Evidence Confidence</h3><p>One-season résumés are pulled toward neutral rather than treated with the same certainty as three or four years of production. This prevents an elite freshman season from automatically becoming a finished NFL profile.</p></div>
+                <div><span class="methodNumber">01</span><h3>Growing Résumé</h3><p>Only seasons available before the selected prospect class are used. Production is 40% latest season, 35% best season and 25% career-per-season average, so extra college years do not win merely by accumulating volume.</p></div>
+                <div><span class="methodNumber">02</span><h3>Evidence Confidence</h3><p>One season still carries uncertainty, but two complete seasons receive 90% confidence and three receive 97%. This lets dominant true juniors compete with older accumulators without treating freshmen as finished products.</p></div>
                 <div><span class="methodNumber">03</span><h3>College Stage</h3><p>Junior receives the strongest stage bump, senior and sophomore are approximately equal, and freshman is lower because freshmen are not yet draft eligible. The adjustment is deliberately modest.</p></div>
                 <div><span class="methodNumber">04</span><h3>Size Profile</h3><p>Height and weight contribute a modest position-specific score. The model uses viable NFL ranges rather than simply rewarding bigger players.</p></div>
-                <div><span class="methodNumber">05</span><h3>Pedigree & Competition</h3><p>Recruiting pedigree and CFBD team/competition context remain supporting signals; neither can override sustained college production.</p></div>
+                <div><span class="methodNumber">05</span><h3>Pedigree & Competition</h3><p>Recruiting pedigree remains a supporting signal. A small dynasty adjustment breaks close cross-position ties: WR is slightly above RB, and both sit modestly above QB and TE. Kickers are included with a positional-value discount.</p></div>
                 <div><span class="methodNumber">06</span><h3>Backtesting</h3><p>The NFL Draft for the selected prospect class is outcome data only. It is never allowed to influence that historical prospect grade.</p></div>
             </div>
             <div class="footerNote">
@@ -589,7 +578,7 @@
     .miniMetrics span { font-size:.52rem; text-transform:uppercase; opacity:.48; } .miniMetrics strong { font-size:.8rem; }
     .outcome { display:flex; flex-direction:column; gap:3px; margin-top:12px; padding:9px 10px; border-radius:7px; background:rgba(127,127,127,.065); }
     .outcome span { font-size:.6rem; text-transform:uppercase; opacity:.5; } .outcome strong { font-size:.75rem; }
-    .controls { display:grid; grid-template-columns:minmax(240px,1fr) 155px 190px; gap:8px; margin-bottom:10px; }
+    .controls { display:grid; grid-template-columns:minmax(240px,1fr) 155px; gap:8px; margin-bottom:10px; }
     .controls input,.controls select { box-sizing:border-box; width:100%; min-height:42px; padding:8px 10px; border:1px solid rgba(127,127,127,.32); border-radius:8px; color:inherit; background:var(--fff); font:inherit; }
     .board { overflow:hidden; border:1px solid rgba(127,127,127,.2); border-radius:11px; background:var(--fff); }
     .boardHeader,.prospectRow { display:grid; grid-template-columns:58px minmax(235px,1.35fr) minmax(190px,.9fr) 150px minmax(190px,.95fr); gap:12px; align-items:center; }
