@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { archivedFetch } from '$lib/server/archiveDb';
 
 const BASE_URL = 'https://api.collegefootballdata.com';
 const MAX_RETRIES = 4;
@@ -80,6 +81,62 @@ const requestJson = async (url, apiKey, path) => {
     throw new Error(`CFBD ${path} failed after ${MAX_RETRIES + 1} attempts.`);
 };
 
+const archivePolicy = (path, params = {}) => {
+    const currentYear = new Date().getUTCFullYear();
+    const requestYear = Number(params.year);
+
+    /*
+        A year older than the current calendar year is treated as immutable.
+        That means the first successful request for 2021/2022/etc. is written
+        permanently and should never consume another CFBD request.
+
+        Current-year data is also persisted immediately, but remains refreshable
+        on a controlled TTL so new games/recruiting/rating updates can replace
+        the stored snapshot.
+    */
+    if (Number.isFinite(requestYear) && requestYear < currentYear) {
+        return {
+            isFinal: true,
+            ttlMs: null
+        };
+    }
+
+    if (path === '/stats/player/season') {
+        return {
+            isFinal: false,
+            ttlMs: 4 * 60 * 60 * 1000
+        };
+    }
+
+    if (path === '/recruiting/players') {
+        return {
+            isFinal: false,
+            ttlMs: 12 * 60 * 60 * 1000
+        };
+    }
+
+    if (path === '/ratings/sp') {
+        return {
+            isFinal: false,
+            ttlMs: 6 * 60 * 60 * 1000
+        };
+    }
+
+    if (path === '/draft/picks') {
+        return {
+            isFinal:
+                Number.isFinite(requestYear) &&
+                requestYear < currentYear,
+            ttlMs: 24 * 60 * 60 * 1000
+        };
+    }
+
+    return {
+        isFinal: false,
+        ttlMs: 6 * 60 * 60 * 1000
+    };
+};
+
 export const cfbdGet = async (path, params = {}) => {
     const apiKey = env.CFBD_API_KEY;
 
@@ -100,22 +157,31 @@ export const cfbdGet = async (path, params = {}) => {
         return cached.value;
     }
 
-    /*
-        Coalesce identical requests inside a warm Vercel process. This matters
-        when two visitors, or two adjacent prospect classes, request the same
-        historical season at nearly the same time.
-    */
     if (inFlight.has(cacheKey)) {
         return inFlight.get(cacheKey);
     }
 
-    const promise = requestJson(url, apiKey, path)
-        .then(value => {
+    const policy = archivePolicy(path, params);
+
+    const promise = archivedFetch({
+        provider: 'cfbd',
+        cacheKey,
+        endpoint: path,
+        requestMeta: {
+            params,
+            url: cacheKey
+        },
+        ttlMs: policy.ttlMs,
+        isFinal: policy.isFinal,
+        fetcher: () => requestJson(url, apiKey, path)
+    })
+        .then(result => {
             memoryCache.set(cacheKey, {
-                value,
+                value: result.value,
                 expiresAt: Date.now() + MEMORY_CACHE_TTL_MS
             });
-            return value;
+
+            return result.value;
         })
         .finally(() => {
             inFlight.delete(cacheKey);
