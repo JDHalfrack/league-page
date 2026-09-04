@@ -47,7 +47,7 @@
     "build": "vite build",
     "build-docker": "DOCKER_BUILD=true vite build --verbose",
     "docker-build": "docker build . -t $USER/league-page:latest",
-    "docker-run": "npm run docker-build && docker run -p 3000:3000 $USER/league-page:latest",
+    "docker-run": "npm run docker-build && docker run -p 3000:3000",
     "preview": "vite preview",
     "prepare": "npm run smui-theme-light && npm run smui-theme-dark",
     "smui-theme-light": "smui-theme compile static/smui.css -i src/theme",
@@ -57,6 +57,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@vercel/analytics": "^1.4.1",
     "contentful": "^10.6.7",
     "contentful-management": "^10.46.4",
