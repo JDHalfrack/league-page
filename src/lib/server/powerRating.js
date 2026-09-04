@@ -1,8 +1,12 @@
+import { archivedFetch } from '$lib/server/archiveDb';
+import { sleeperGet } from '$lib/server/sleeperArchive';
+
 const BASE_RATING = 1500;
 const K_FACTOR = 24;
 const MAX_GAME_CHANGE = 32;
 const PROJECTION_BLEND = 0.35;
 const ELO_BLEND = 1 - PROJECTION_BLEND;
+const DERIVED_CACHE_TTL_MS = 30 * 60 * 1000;
 
 const LEAGUES = [
   { season: 2019, leagueId: '407807711988695040' },
@@ -15,36 +19,28 @@ const LEAGUES = [
   { season: 2026, leagueId: '1312126115816415232' }
 ];
 
-const memoryCache = new Map();
-const inFlight = new Map();
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const round = (v, d = 1) => { const f = 10 ** d; return Math.round(v * f) / f; };
+const historicalSeason = season => Number(season) < new Date().getUTCFullYear();
 
-const fetchJson = async url => {
-  const now = Date.now();
-  const cached = memoryCache.get(url);
-  if (cached && cached.expiresAt > now) return cached.value;
-  if (inFlight.has(url)) return inFlight.get(url);
+const fetchJson = async (url, { season = null, type = 'power-rating', week = null, notFoundValue } = {}) => {
+  const isFinal = Number.isFinite(Number(season)) && historicalSeason(season);
 
-  const promise = fetch(url, { headers: { Accept: 'application/json' } })
-    .then(async response => {
-      if (!response.ok) throw new Error(`Sleeper request failed ${response.status}: ${url}`);
-      return response.json();
-    })
-    .then(value => {
-      memoryCache.set(url, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-      return value;
-    })
-    .finally(() => inFlight.delete(url));
-
-  inFlight.set(url, promise);
-  return promise;
+  return sleeperGet(url, {
+    ttlMs: isFinal ? null : 15 * 60 * 1000,
+    isFinal,
+    metadata: {
+      source: 'owner-power-rating-v1.1',
+      type,
+      ...(season == null ? {} : { season: Number(season) }),
+      ...(week == null ? {} : { week: Number(week) })
+    },
+    notFoundValue
+  });
 };
 
-const safeFetchJson = async (url, fallback = null) => {
-  try { return await fetchJson(url); } catch { return fallback; }
+const safeFetchJson = async (url, fallback = null, options = {}) => {
+  try { return await fetchJson(url, options); } catch { return fallback; }
 };
 
 const runWithConcurrency = async (jobs, limit = 12) => {
@@ -131,8 +127,11 @@ const displayNameForUser = user => user?.display_name || user?.username || user?
 
 const loadSeasonContext = async ({ season, leagueId }) => {
   const base = `https://api.sleeper.app/v1/league/${leagueId}`;
+  const common = { season };
   const [league, users, rosters] = await Promise.all([
-    fetchJson(base), fetchJson(`${base}/users`), fetchJson(`${base}/rosters`)
+    fetchJson(base, { ...common, type: 'league' }),
+    fetchJson(`${base}/users`, { ...common, type: 'users' }),
+    fetchJson(`${base}/rosters`, { ...common, type: 'rosters' })
   ]);
   const usersById = new Map((users || []).map(u => [String(u.user_id), u]));
   const ownerByRoster = new Map();
@@ -155,10 +154,18 @@ const projectionUrls = (season, week) => [
 ];
 
 const loadWeek = async (context, week) => {
-  const matchupPromise = safeFetchJson(`https://api.sleeper.app/v1/league/${context.leagueId}/matchups/${week}`, []);
+  const matchupPromise = safeFetchJson(
+    `https://api.sleeper.app/v1/league/${context.leagueId}/matchups/${week}`,
+    [],
+    { season: context.season, week, type: 'matchups', notFoundValue: [] }
+  );
   const projectionPromise = (async () => {
     for (const url of projectionUrls(context.season, week)) {
-      const rows = await safeFetchJson(url, null);
+      const rows = await safeFetchJson(
+        url,
+        null,
+        { season: context.season, week, type: 'projection', notFoundValue: [] }
+      );
       if (Array.isArray(rows) && rows.length) return rows;
     }
     return [];
@@ -199,11 +206,11 @@ const processGame = ({ context, weekData, pair, states, games }) => {
   const [rowA, rowB] = pair.rows;
   const ownerA = context.ownerByRoster.get(Number(rowA.roster_id));
   const ownerB = context.ownerByRoster.get(Number(rowB.roster_id));
-  if (!ownerA || !ownerB || ownerA.ownerId === ownerB.ownerId) return;
+  if (!ownerA || !ownerB || ownerA.ownerId === ownerB.ownerId) return false;
 
   const pointsA = Number(rowA.points);
   const pointsB = Number(rowB.points);
-  if (!Number.isFinite(pointsA) || !Number.isFinite(pointsB) || (pointsA === 0 && pointsB === 0)) return;
+  if (!Number.isFinite(pointsA) || !Number.isFinite(pointsB) || (pointsA === 0 && pointsB === 0)) return false;
 
   const stateA = ownerState(states, ownerA);
   const stateB = ownerState(states, ownerB);
@@ -249,9 +256,11 @@ const processGame = ({ context, weekData, pair, states, games }) => {
 
   stateA.gameLog.push({ gameId: game.id, season: game.season, week: game.week, opponent: stateB.name, pointsFor: game.pointsA, pointsAgainst: game.pointsB, projectionFor: game.projectionA, projectionAgainst: game.projectionB, expectedWinPct: game.expectedA, ratingBefore: game.beforeA, ratingAfter: game.afterA, change: game.changeA, result: resultA === 1 ? 'W' : resultA === 0 ? 'L' : 'T' });
   stateB.gameLog.push({ gameId: game.id, season: game.season, week: game.week, opponent: stateA.name, pointsFor: game.pointsB, pointsAgainst: game.pointsA, projectionFor: game.projectionB, projectionAgainst: game.projectionA, expectedWinPct: round((1 - expected.probability) * 100, 1), ratingBefore: game.beforeB, ratingAfter: game.afterB, change: game.changeB, result: resultA === 0 ? 'W' : resultA === 1 ? 'L' : 'T' });
+
+  return true;
 };
 
-export const buildOwnerPowerRatings = async () => {
+const computeOwnerPowerRatings = async () => {
   const contexts = await runWithConcurrency(LEAGUES.map(info => () => loadSeasonContext(info)), 8);
   const jobs = [];
   for (const context of contexts) for (let week = 1; week <= 18; week++) jobs.push(async () => ({ context, weekData: await loadWeek(context, week) }));
@@ -265,7 +274,14 @@ export const buildOwnerPowerRatings = async () => {
   for (const { context, weekData } of weeks) {
     const pairs = matchupPairs(weekData.matchups);
     if (!pairs.length) continue;
-    for (const pair of pairs) processGame({ context, weekData, pair, states, games });
+
+    let processedGames = 0;
+    for (const pair of pairs) {
+      if (processGame({ context, weekData, pair, states, games })) processedGames += 1;
+    }
+
+    if (!processedGames) continue;
+
     const ranking = rankingSnapshot(states);
     ranking.forEach((owner, index) => {
       if (index === 0) owner.weeksAtOne += 1;
@@ -292,9 +308,26 @@ export const buildOwnerPowerRatings = async () => {
   const gamesWithProjection = games.filter(g => g.projectionA != null && g.projectionB != null).length;
 
   return {
-    modelVersion: '1.0.0', generatedAt: new Date().toISOString(), baseRating: BASE_RATING,
+    modelVersion: '1.1.0', generatedAt: new Date().toISOString(), baseRating: BASE_RATING,
     methodology: { kFactor: K_FACTOR, eloWeight: ELO_BLEND, projectionWeight: PROJECTION_BLEND, maxGameChange: MAX_GAME_CHANGE },
     coverage: { seasons: LEAGUES.map(x => x.season), games: games.length, gamesWithProjection, projectionCoveragePct: games.length ? round((gamesWithProjection / games.length) * 100, 1) : 0 },
     owners, timeline, games, biggestUpsets
   };
+};
+
+export const buildOwnerPowerRatings = async () => {
+  const result = await archivedFetch({
+    provider: 'derived',
+    cacheKey: 'owner-power-rating:v1.1.0',
+    endpoint: 'owner-power-rating',
+    requestMeta: {
+      type: 'owner-power-rating',
+      modelVersion: '1.1.0'
+    },
+    ttlMs: DERIVED_CACHE_TTL_MS,
+    isFinal: false,
+    fetcher: computeOwnerPowerRatings
+  });
+
+  return result.value;
 };
